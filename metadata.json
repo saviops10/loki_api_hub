@@ -1,0 +1,5 @@
+{
+  "name": "L.O.K.I API Hub",
+  "description": "A robust platform to manage multiple APIs with automated token refresh, endpoint favoriting, and secure credential storage.",
+  "requestFramePermissions": []
+}
