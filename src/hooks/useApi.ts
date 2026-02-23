@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useApp } from '../context/AppContext';
 
 interface UseApiOptions {
   onSuccess?: (data: any) => void;
@@ -7,6 +8,7 @@ interface UseApiOptions {
 }
 
 export const useApi = (options: UseApiOptions = {}) => {
+  const { user, setUser } = useApp();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -14,13 +16,36 @@ export const useApi = (options: UseApiOptions = {}) => {
     setLoading(true);
     setError(null);
     
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    if (fetchOptions.headers) {
+      if (fetchOptions.headers instanceof Headers) {
+        fetchOptions.headers.forEach((value, key) => {
+          headers[key] = value;
+        });
+      } else if (Array.isArray(fetchOptions.headers)) {
+        fetchOptions.headers.forEach(([key, value]) => {
+          headers[key] = value;
+        });
+      } else {
+        Object.assign(headers, fetchOptions.headers);
+      }
+    }
+
+    if (user?.api_key) {
+      headers['X-Loki-API-Key'] = user.api_key;
+    }
+
+    if (user?.session_token) {
+      headers['X-Loki-Session-Token'] = user.session_token;
+    }
+
     try {
       const response = await fetch(url, {
         ...fetchOptions,
-        headers: {
-          'Content-Type': 'application/json',
-          ...fetchOptions.headers,
-        },
+        headers,
       });
 
       const data = await response.json().catch(() => null);
@@ -28,7 +53,10 @@ export const useApi = (options: UseApiOptions = {}) => {
       if (!response.ok) {
         // Map HTTP errors to user-friendly messages
         let message = 'An unexpected error occurred';
-        if (response.status === 401) message = 'Session expired. Please login again.';
+        if (response.status === 401) {
+          message = 'Session expired. Please login again.';
+          setUser(null);
+        }
         if (response.status === 403) message = 'You do not have permission to perform this action.';
         if (response.status === 404) message = 'The requested resource was not found.';
         if (response.status >= 500) message = 'Server error. Please try again later.';

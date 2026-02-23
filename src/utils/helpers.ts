@@ -20,7 +20,7 @@ export const generateCurl = (api: ApiConfig, ep: Endpoint, params: { key: string
   if (api.auth_type === 'apikey') {
     curl += ` \\\n  -H "X-API-Key: YOUR_API_KEY"`;
   } else if (api.auth_type === 'oauth2') {
-    curl += ` \\\n  -H "Authorization: bearer {{token_api_${api.id}}}"`;
+    curl += ` \\\n  -H "Authorization: Bearer {{token_api_${api.id}}}"`;
   }
   curl += ` \\\n  -H "accept: application/json"`;
   curl += ` \\\n  -H "Content-Type: application/json"`;

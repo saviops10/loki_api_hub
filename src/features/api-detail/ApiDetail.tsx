@@ -20,6 +20,7 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
   const [endpointParams, setEndpointParams] = useLocalStorage<Record<number, { key: string, value: string }[]>>('smart_api_hub_endpoint_params', {});
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [isRefreshingToken, setIsRefreshingToken] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   
   const [expandedLogId, setExpandedLogId] = useState<number | null>(null);
   
@@ -81,7 +82,13 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
     }
   };
 
-  const groupedEndpoints = endpoints.reduce((acc, ep) => {
+  const filteredEndpoints = endpoints.filter(ep => 
+    ep.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    ep.path.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (ep.group_name && ep.group_name.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
+  const groupedEndpoints = filteredEndpoints.reduce((acc, ep) => {
     const group = ep.group_name || 'Default';
     if (!acc[group]) acc[group] = [];
     acc[group].push(ep);
@@ -106,7 +113,7 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
       body: JSON.stringify({ 
         apiId: api.id, 
         endpointId: ep.id,
-        body: ep.method !== 'GET' ? body : undefined
+        body: body
       }),
     });
 
@@ -188,14 +195,27 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
           </aside>
 
           <main className="lg:col-span-8 space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-bold text-white">Endpoints</h2>
-              <Button variant="secondary" onClick={fetchEndpoints} size="sm">Sync</Button>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div className="flex items-center gap-4">
+                <h2 className="text-xl font-bold text-white">Endpoints</h2>
+                <span className="text-xs text-zinc-500 bg-zinc-900 px-3 py-1 rounded-full border border-zinc-800">
+                  {filteredEndpoints.length} Total
+                </span>
+              </div>
+              <div className="flex gap-2 w-full md:w-auto">
+                <Input 
+                  placeholder="Search endpoints..." 
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="bg-zinc-900/50 border-zinc-800 text-xs w-full md:w-64"
+                />
+                <Button variant="secondary" onClick={fetchEndpoints} size="sm">Sync</Button>
+              </div>
             </div>
 
             {loading && endpoints.length === 0 ? (
               <LoadingSpinner label="Loading endpoints..." />
-            ) : endpoints.length > 0 ? (
+            ) : filteredEndpoints.length > 0 ? (
               <div className="space-y-12">
                 {(Object.entries(groupedEndpoints) as [string, Endpoint[]][]).map(([group, groupEps]) => (
                   <div key={group} className="space-y-4">

@@ -1,6 +1,8 @@
 export interface User {
   id: number;
   username: string;
+  api_key?: string;
+  session_token?: string;
 }
 
 export interface ApiConfig {
