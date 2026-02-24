@@ -7,6 +7,7 @@ import Database from "better-sqlite3";
 import crypto from "crypto";
 import fs from "fs";
 import bcrypt from "bcryptjs";
+import { z } from "zod";
 
 dotenv.config();
 
@@ -41,6 +42,7 @@ db.exec(`
     auth_endpoint TEXT,
     auth_username TEXT,
     auth_password TEXT,
+    auth_payload_template TEXT,
     token TEXT,
     token_expires_at DATETIME,
     last_refresh DATETIME,
@@ -78,9 +80,9 @@ db.exec(`
 // Migration: Ensure new columns exist
 const ensureColumns = () => {
   const tables = {
-    apis: ['auth_endpoint', 'auth_username', 'auth_password', 'token', 'token_expires_at', 'last_refresh'],
+    apis: ['auth_endpoint', 'auth_username', 'auth_password', 'auth_payload_template', 'token', 'token_expires_at', 'last_refresh'],
     endpoints: ['group_name'],
-    users: ['failed_attempts', 'lock_until', 'api_key']
+    users: ['failed_attempts', 'lock_until', 'api_key', 'full_name', 'email']
   };
 
   for (const [table, columns] of Object.entries(tables)) {
@@ -178,6 +180,58 @@ function decrypt(text: string) {
   }
 }
 
+// Log Scrubber for security
+function scrubData(data: any): any {
+  if (typeof data !== 'object' || data === null) return data;
+  
+  const sensitiveKeys = ['password', 'token', 'access_token', 'apiKey', 'api_key', 'secret', 'authorization'];
+  const scrubbed = Array.isArray(data) ? [...data] : { ...data };
+  
+  for (const key in scrubbed) {
+    if (sensitiveKeys.some(sk => key.toLowerCase().includes(sk.toLowerCase()))) {
+      scrubbed[key] = '********';
+    } else if (typeof scrubbed[key] === 'object') {
+      scrubbed[key] = scrubData(scrubbed[key]);
+    }
+  }
+  return scrubbed;
+}
+
+// Zod Schemas
+const LoginSchema = z.object({
+  username: z.string().min(3),
+  password: z.string().min(6)
+});
+
+const RegisterSchema = z.object({
+  username: z.string().min(3),
+  fullName: z.string().min(3),
+  email: z.string().email(),
+  password: z.string().regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/),
+  termsAccepted: z.boolean().refine(v => v === true, "You must accept the terms"),
+  privacyAccepted: z.boolean().refine(v => v === true, "You must accept the privacy policy")
+});
+
+const ApiSchema = z.object({
+  name: z.string().min(1),
+  baseUrl: z.string().url(),
+  authType: z.enum(['none', 'apikey', 'oauth2']),
+  authConfig: z.record(z.string(), z.any()).optional(),
+  authEndpoint: z.string().optional(),
+  authUsername: z.string().optional(),
+  authPassword: z.string().optional(),
+  authPayloadTemplate: z.string().optional()
+});
+
+const EndpointSchema = z.object({
+  apiId: z.number(),
+  name: z.string().min(1),
+  path: z.string().min(1),
+  method: z.enum(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']),
+  groupName: z.string().optional(),
+  isFavorite: z.boolean().optional()
+});
+
 // API Routes
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
@@ -228,7 +282,11 @@ const checkOwnership = (table: string, id: number, userId: number) => {
 
 // Auth Routes
 app.post("/api/auth/login", (req, res) => {
-  const { username, password } = req.body;
+  const validation = LoginSchema.safeParse(req.body);
+  if (!validation.success) {
+    return res.status(400).json({ error: "Invalid input format", details: validation.error.format() });
+  }
+  const { username, password } = validation.data;
   console.log(`[AUTH] Login attempt for: ${username}`);
   const user = db.prepare("SELECT * FROM users WHERE username = ?").get(username) as any;
   
@@ -265,26 +323,26 @@ app.post("/api/auth/login", (req, res) => {
 });
 
 app.post("/api/auth/register", (req, res) => {
-  const { username, password } = req.body;
-  console.log(`[AUTH] Registration attempt for: ${username}`);
-  
-  // Password validation
-  const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
-  if (!passwordRegex.test(password)) {
-    console.warn(`[AUTH] Registration failure: Password requirements not met (${username})`);
+  const validation = RegisterSchema.safeParse(req.body);
+  if (!validation.success) {
     return res.status(400).json({ 
-      error: "Password must be at least 8 characters long and include uppercase, lowercase, number, and special character." 
+      error: validation.error.issues[0].message
     });
   }
+  const { username, fullName, email, password } = validation.data;
+  console.log(`[AUTH] Registration attempt for: ${username}`);
 
   try {
     const hashedPassword = bcrypt.hashSync(password, 10);
     const apiKey = `loki_${crypto.randomBytes(16).toString('hex')}`;
-    const info = db.prepare("INSERT INTO users (username, password, api_key) VALUES (?, ?, ?)").run(username, hashedPassword, apiKey);
+    const info = db.prepare("INSERT INTO users (username, full_name, email, password, api_key) VALUES (?, ?, ?, ?, ?)").run(username, fullName, email, hashedPassword, apiKey);
     console.log(`[AUTH] Registration success: ${username}. API Key generated.`);
     res.json({ id: info.lastInsertRowid, username, apiKey });
-  } catch (e) {
-    console.error(`[AUTH] Registration failure: Username exists (${username})`);
+  } catch (e: any) {
+    console.error(`[AUTH] Registration failure: ${e.message}`);
+    if (e.message.includes('UNIQUE constraint failed: users.email')) {
+      return res.status(400).json({ error: "Email already exists" });
+    }
     res.status(400).json({ error: "Username already exists" });
   }
 });
@@ -333,6 +391,28 @@ app.post("/api/auth/regenerate-key", validateApiKey, (req, res) => {
   res.json({ api_key: newApiKey });
 });
 
+app.post("/api/auth/change-password", validateApiKey, (req, res) => {
+  const userId = (req as any).userId;
+  const { currentPassword, newPassword } = req.body;
+
+  const user = db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any;
+  if (!user) return res.status(404).json({ error: "User not found" });
+
+  const isValid = bcrypt.compareSync(currentPassword, user.password);
+  if (!isValid) return res.status(401).json({ error: "Current password incorrect" });
+
+  // Validate new password
+  const validation = RegisterSchema.safeParse({ username: user.username, password: newPassword });
+  if (!validation.success) {
+    return res.status(400).json({ error: "New password does not meet requirements" });
+  }
+
+  const hashedPassword = bcrypt.hashSync(newPassword, 10);
+  db.prepare("UPDATE users SET password = ? WHERE id = ?").run(hashedPassword, userId);
+  
+  res.json({ success: true });
+});
+
 // API Management Routes
 app.get("/api/apis", validateApiKey, (req, res) => {
   const userId = (req as any).userId;
@@ -354,15 +434,15 @@ app.get("/api/apis/:id", validateApiKey, (req, res) => {
 app.post("/api/apis", validateApiKey, (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { name, baseUrl, authType, authConfig, authEndpoint, authUsername, authPassword } = req.body;
-    
-    if (!name || !baseUrl) {
-      return res.status(400).json({ error: "Missing required fields" });
+    const validation = ApiSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ error: "Invalid API configuration", details: validation.error.format() });
     }
+    const { name, baseUrl, authType, authConfig, authEndpoint, authUsername, authPassword, authPayloadTemplate } = validation.data;
 
     const encryptedConfig = encrypt(JSON.stringify(authConfig || {}));
-    const info = db.prepare("INSERT INTO apis (user_id, name, base_url, auth_type, auth_config, auth_endpoint, auth_username, auth_password) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-      .run(userId, name, baseUrl, authType || 'none', encryptedConfig, authEndpoint, authUsername, authPassword);
+    const info = db.prepare("INSERT INTO apis (user_id, name, base_url, auth_type, auth_config, auth_endpoint, auth_username, auth_password, auth_payload_template) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(userId, name, baseUrl, authType || 'none', encryptedConfig, authEndpoint, authUsername, authPassword, authPayloadTemplate);
     
     const apiId = Number(info.lastInsertRowid);
 
@@ -383,11 +463,15 @@ app.put("/api/apis/:id", validateApiKey, (req, res) => {
     if (!checkOwnership('apis', Number(id), userId)) {
       return res.status(403).json({ error: "Access denied" });
     }
-    const { name, baseUrl, authType, authConfig, authEndpoint, authUsername, authPassword } = req.body;
+    const validation = ApiSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ error: "Invalid API configuration", details: validation.error.format() });
+    }
+    const { name, baseUrl, authType, authConfig, authEndpoint, authUsername, authPassword, authPayloadTemplate } = validation.data;
     
     const encryptedConfig = encrypt(JSON.stringify(authConfig || {}));
-    db.prepare("UPDATE apis SET name = ?, base_url = ?, auth_type = ?, auth_config = ?, auth_endpoint = ?, auth_username = ?, auth_password = ? WHERE id = ?")
-      .run(name, baseUrl, authType, encryptedConfig, authEndpoint, authUsername, authPassword, id);
+    db.prepare("UPDATE apis SET name = ?, base_url = ?, auth_type = ?, auth_config = ?, auth_endpoint = ?, auth_username = ?, auth_password = ?, auth_payload_template = ? WHERE id = ?")
+      .run(name, baseUrl, authType, encryptedConfig, authEndpoint, authUsername, authPassword, authPayloadTemplate, id);
     
     if (authEndpoint) {
       refreshApiToken(Number(id)).catch(err => console.error("Update refresh failed:", err));
@@ -423,15 +507,12 @@ async function refreshApiToken(apiId: number) {
   const api = db.prepare("SELECT * FROM apis WHERE id = ?").get(apiId) as any;
   if (!api || !api.auth_endpoint) return null;
 
-  const tryRefresh = async (userFieldName: string) => {
+  const tryRefresh = async (payload: any) => {
     try {
       const response = await fetch(api.auth_endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          [userFieldName]: api.auth_username,
-          password: api.auth_password
-        })
+        body: JSON.stringify(payload)
       });
 
       if (!response.ok) return null;
@@ -444,13 +525,32 @@ async function refreshApiToken(apiId: number) {
   try {
     console.log(`[AUTH] Refreshing token for API: ${api.name} (${apiId})`);
     
-    // Try 'username' first (Telecall pattern as requested)
-    let data = await tryRefresh('username');
-    
-    // If failed, try 'user' (Common pattern)
+    let data = null;
+
+    // Use dynamic template if available
+    if (api.auth_payload_template) {
+      try {
+        let template = api.auth_payload_template;
+        template = template.replace('{{username}}', api.auth_username || '');
+        template = template.replace('{{password}}', api.auth_password || '');
+        const payload = JSON.parse(template);
+        console.log(`[AUTH] Using dynamic template for API ${apiId}`);
+        data = await tryRefresh(payload);
+      } catch (e) {
+        console.error(`[AUTH] Failed to parse auth_payload_template for API ${apiId}:`, e);
+      }
+    }
+
+    // Fallback to legacy logic if template failed or not provided
     if (!data) {
-      console.log(`[AUTH] Refresh with 'username' failed for API ${apiId}, trying 'user'...`);
-      data = await tryRefresh('user');
+      // Try 'username' first (Telecall pattern as requested)
+      data = await tryRefresh({ username: api.auth_username, password: api.auth_password });
+      
+      // If failed, try 'user' (Common pattern)
+      if (!data) {
+        console.log(`[AUTH] Refresh with 'username' failed for API ${apiId}, trying 'user'...`);
+        data = await tryRefresh({ user: api.auth_username, password: api.auth_password });
+      }
     }
 
     if (!data) {
@@ -536,13 +636,13 @@ app.get("/api/endpoints/:apiId", validateApiKey, (req, res) => {
 app.post("/api/endpoints", validateApiKey, (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { apiId, name, path, method, isFavorite, groupName } = req.body;
+    const validation = EndpointSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ error: "Invalid endpoint configuration", details: validation.error.format() });
+    }
+    const { apiId, name, path, method, isFavorite, groupName } = validation.data;
     if (!checkOwnership('apis', Number(apiId), userId)) {
       return res.status(403).json({ error: "Access denied" });
-    }
-
-    if (!apiId || !name || !path || !method) {
-      return res.status(400).json({ error: "Missing required fields" });
     }
 
     const info = db.prepare("INSERT INTO endpoints (api_id, name, path, method, is_favorite, group_name) VALUES (?, ?, ?, ?, ?, ?)")
@@ -674,8 +774,9 @@ app.post("/api/proxy", validateApiKey, async (req, res) => {
 
     const responseData = await response.json().catch(() => null);
 
-    // 4. Log the response (Simulating R2 for large payloads)
-    const responseBodyStr = JSON.stringify(responseData || { message: "No JSON response" });
+    // 4. Log the response with scrubbing
+    const scrubbedResponse = scrubData(responseData || { message: "No JSON response" });
+    const responseBodyStr = JSON.stringify(scrubbedResponse);
     const isLargePayload = responseBodyStr.length > 5000;
     
     if (isLargePayload) {

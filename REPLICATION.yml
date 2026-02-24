@@ -1,0 +1,50 @@
+# Configuração de Replicação YAML (Wrangler/Cloudflare)
+
+version: "1.0"
+application:
+  name: loki-api-hub
+  stack:
+    frontend: React 18 + Vite
+    backend: Node.js (Express)
+    database: Cloudflare D1 (SQLite)
+    storage: Cloudflare R2
+    cache: Cloudflare KV
+
+infrastructure:
+  d1:
+    name: loki-db-prod
+    id: 50816303-3353-45dd-9b31-d85d65ff138a
+    binding: DB
+    schema_file: ./database/schema.sql
+  
+  kv:
+    namespaces:
+      - name: loki-kv-sessions
+        binding: SESSIONS
+        usage: "Armazenamento de tokens de sessão e estados de rate-limit"
+  
+  r2:
+    buckets:
+      - name: loki-r2-payloads
+        binding: PAYLOADS
+        usage: "Logs de payloads extensos e exportações de dados"
+
+deployment:
+  build_command: "npm run build"
+  environment_variables:
+    - name: NODE_ENV
+      value: "production"
+    - name: ENCRYPTION_KEY
+      secret: true
+      description: "Chave AES-256 para criptografia de tokens de terceiros"
+    - name: PORT
+      value: "3000"
+
+security:
+  rate_limiting:
+    requests_per_minute: 100
+    storage: KV
+  auth:
+    mechanism: Session-based
+    storage: D1 + KV (Cache)
+    encryption: AES-256-CBC

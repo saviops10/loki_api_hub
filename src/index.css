@@ -1,14 +1,26 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  --color-gold-50: #fdfbed;
+  --color-gold-100: #f9f4d1;
+  --color-gold-200: #f2e6a5;
+  --color-gold-300: #e8d16f;
+  --color-gold-400: #dbb53f;
+  --color-gold-500: #c59d2a;
+  --color-gold-600: #a77b21;
+  --color-gold-700: #855c1d;
+  --color-gold-800: #704d1f;
+  --color-gold-900: #60421f;
+  --color-gold-950: #37230f;
 }
 
 @layer base {
   body {
-    @apply bg-zinc-950 text-zinc-100 antialiased selection:bg-emerald-500/30 selection:text-emerald-200;
+    @apply bg-[#050505] text-zinc-100 antialiased selection:bg-emerald-500/30 selection:text-emerald-200;
   }
 }
 

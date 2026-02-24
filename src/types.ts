@@ -15,6 +15,7 @@ export interface ApiConfig {
   auth_endpoint?: string;
   auth_username?: string;
   auth_password?: string;
+  auth_payload_template?: string;
   token?: string;
   token_expires_at?: string;
   last_refresh?: string;

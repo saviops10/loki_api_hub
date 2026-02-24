@@ -8,6 +8,7 @@ import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
 import { LoadingSpinner, EmptyState } from '../../components/Feedback';
 import { ConfirmModal } from '../../components/Modal';
+import { ProfileMenu } from '../../components/ProfileMenu';
 import { generateCurl, formatDate } from '../../utils/helpers';
 
 export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ api: initialApi, onBack }) => {
@@ -15,7 +16,8 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
   const [api, setApi] = useState<ApiConfig>(initialApi);
   const [endpoints, setEndpoints] = useLocalStorage<Endpoint[]>('smart_api_hub_endpoints', []);
   const [testResults, setTestResults] = useState<Record<number, any>>({});
-  const [activeTabs, setActiveTabs] = useState<Record<number, 'params' | 'payload' | 'curl' | 'logs'>>({});
+  const [selectedEndpoint, setSelectedEndpoint] = useState<any>(null);
+  const [activeEndpointTab, setActiveEndpointTab] = useState<'params' | 'payload' | 'curl' | 'logs'>('params');
   const [endpointLogs, setEndpointLogs] = useState<Record<number, Log[]>>({});
   const [endpointParams, setEndpointParams] = useLocalStorage<Record<number, { key: string, value: string }[]>>('smart_api_hub_endpoint_params', {});
   const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -119,61 +121,75 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
 
     if (result) {
       setTestResults(prev => ({ ...prev, [ep.id]: { ...result, timestamp: new Date() } }));
+      setActiveEndpointTab('payload');
+      fetchLogs(ep.id);
     }
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 p-8">
-      <div className="max-w-7xl mx-auto space-y-8">
-        <button onClick={onBack} className="text-zinc-500 hover:text-white flex items-center gap-2 text-sm font-medium transition-colors">
-          ← Back to Dashboard
-        </button>
-
-        <header className="flex justify-between items-end bg-zinc-900/30 p-8 rounded-3xl border border-zinc-800/50">
-          <div className="space-y-2">
-            <h1 className="text-5xl font-black text-white tracking-tighter">{api.name}</h1>
-            <p className="text-zinc-500 font-mono text-sm bg-black/20 px-3 py-1 rounded-lg inline-block">{api.base_url}</p>
+    <div className="min-h-screen bg-[#050505] p-4 sm:p-8">
+      <div className="max-w-7xl mx-auto space-y-12">
+        <header className="flex justify-between items-center bg-zinc-900/20 p-6 rounded-[2rem] border border-zinc-800/50 backdrop-blur-xl">
+          <div className="flex items-center gap-5">
+            <button onClick={onBack} className="w-12 h-12 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-2xl flex items-center justify-center transition-all group">
+              <span className="text-xl group-hover:-translate-x-1 transition-transform">←</span>
+            </button>
+            <div className="space-y-0.5">
+              <h1 className="text-3xl font-black text-white tracking-tighter uppercase">{api.name}</h1>
+              <p className="text-[10px] uppercase tracking-[0.4em] font-black text-zinc-600 truncate max-w-[200px] sm:max-w-none">{api.base_url}</p>
+            </div>
           </div>
-          <div className="flex flex-col items-end gap-4">
-            <div className="flex flex-col items-end gap-1">
-              <span className="text-[10px] uppercase tracking-[0.2em] font-black text-zinc-600">Authentication</span>
-              <span className="bg-emerald-500/10 text-emerald-400 px-4 py-1.5 rounded-full border border-emerald-500/20 text-xs font-bold uppercase">
+          
+          <div className="flex items-center gap-4">
+            <div className="hidden lg:flex flex-col items-end gap-1 mr-4">
+              <span className="text-[9px] uppercase tracking-[0.2em] font-black text-zinc-600">Authentication</span>
+              <span className="bg-emerald-500/10 text-emerald-400 px-3 py-1 rounded-full border border-emerald-500/20 text-[10px] font-black uppercase">
                 {api.auth_type}
               </span>
             </div>
-            {api.auth_endpoint && (
-              <div className="flex flex-col items-end gap-2">
-                {!api.token && api.auth_type === 'oauth2' && (
-                  <span className="text-[10px] text-red-400 font-bold animate-pulse">
-                    ⚠️ NO TOKEN FOUND - PLEASE REFRESH
-                  </span>
-                )}
-                <div className="flex gap-4 text-[10px] font-mono text-zinc-500">
-                  {api.last_refresh && (
-                    <span>Last Refresh: {formatDate(api.last_refresh)}</span>
-                  )}
-                  {api.token_expires_at && (
-                    <span className={new Date(api.token_expires_at) < new Date() ? 'text-red-400' : 'text-emerald-500'}>
-                      Expires: {formatDate(api.token_expires_at)}
-                    </span>
-                  )}
-                </div>
-                <Button 
-                  variant="secondary" 
-                  size="sm" 
-                  onClick={handleRefreshToken} 
-                  isLoading={isRefreshingToken}
-                  icon={<span>🔑</span>}
-                >
-                  Refresh Token
-                </Button>
-              </div>
-            )}
+            <ProfileMenu />
           </div>
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <aside className="lg:col-span-4 space-y-6">
+            {api.auth_endpoint && (
+              <Card title="Token Status">
+                <div className="space-y-4">
+                  {!api.token && api.auth_type === 'oauth2' && (
+                    <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-center">
+                      <p className="text-xs text-red-400 font-black animate-pulse uppercase tracking-widest">
+                        ⚠️ No Token Found
+                      </p>
+                    </div>
+                  )}
+                  
+                  <div className="grid grid-cols-1 gap-3">
+                    <div className="p-4 bg-zinc-900/50 rounded-2xl border border-zinc-800/50 space-y-1">
+                      <p className="text-[10px] uppercase font-black text-zinc-600 tracking-widest">Last Refresh</p>
+                      <p className="text-xs text-zinc-400 font-bold">{api.last_refresh ? formatDate(api.last_refresh) : 'Never'}</p>
+                    </div>
+                    <div className="p-4 bg-zinc-900/50 rounded-2xl border border-zinc-800/50 space-y-1">
+                      <p className="text-[10px] uppercase font-black text-zinc-600 tracking-widest">Expires At</p>
+                      <p className={`text-xs font-bold ${api.token_expires_at && new Date(api.token_expires_at) < new Date() ? 'text-red-400' : 'text-emerald-500'}`}>
+                        {api.token_expires_at ? formatDate(api.token_expires_at) : 'N/A'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <Button 
+                    variant="primary" 
+                    className="w-full"
+                    onClick={handleRefreshToken} 
+                    isLoading={isRefreshingToken}
+                    icon={<span>🔑</span>}
+                  >
+                    Refresh Token
+                  </Button>
+                </div>
+              </Card>
+            )}
+            
             <Card title="Add Endpoint">
               <form onSubmit={handleAddEndpoint} className="space-y-4">
                 <Input label="Name" name="name" placeholder="e.g. Get Users" required />
@@ -242,181 +258,27 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
                               </div>
                             </div>
                             <div className="flex items-center gap-3">
-                              <button 
-                                onClick={() => setActiveTabs(prev => ({ ...prev, [ep.id]: prev[ep.id] ? undefined : 'params' } as any))}
-                                className="text-zinc-500 hover:text-white text-xs font-bold transition-colors"
+                              <Button 
+                                onClick={() => {
+                                  setSelectedEndpoint(ep);
+                                  setActiveEndpointTab('params');
+                                }}
+                                variant="secondary"
+                                size="sm"
+                                className="border-gold-500/30 hover:border-gold-500/50"
                               >
-                                DETAILS
-                              </button>
+                                OPEN
+                              </Button>
                               <button 
                                 onClick={() => setDeleteId(ep.id)}
-                                className="text-zinc-600 hover:text-red-400 text-xs font-bold transition-colors"
+                                className="text-zinc-600 hover:text-red-400 text-xs font-black transition-colors uppercase tracking-widest"
                               >
-                                DELETE
+                                Delete
                               </button>
-                              <Button 
-                                onClick={() => handleTest(ep)}
-                                isLoading={loading}
-                                size="sm"
-                              >
-                                TEST
-                              </Button>
                             </div>
                           </div>
 
-                          {activeTabs[ep.id] && (
-                            <div className="bg-zinc-900/30 border border-zinc-800 rounded-2xl p-6 space-y-6 animate-in slide-in-from-top-2 duration-200">
-                              <div className="flex gap-6 border-b border-zinc-800">
-                                {['params', 'payload', 'curl', 'logs'].map((tab) => (
-                                  <button 
-                                    key={tab}
-                                    onClick={() => {
-                                      setActiveTabs(prev => ({ ...prev, [ep.id]: tab as any }));
-                                      if (tab === 'logs') fetchLogs(ep.id);
-                                    }}
-                                    className={`pb-3 text-xs font-black uppercase tracking-widest transition-all ${activeTabs[ep.id] === tab ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-zinc-600 hover:text-zinc-400'}`}
-                                  >
-                                    {tab}
-                                  </button>
-                                ))}
-                              </div>
-                              
-                              {activeTabs[ep.id] === 'params' && (
-                                <div className="space-y-4">
-                                  <div className="flex justify-between items-center">
-                                    <p className="text-[10px] text-zinc-500 uppercase font-black tracking-widest">
-                                      {ep.method === 'GET' ? 'Query Parameters' : 'Body Parameters'}
-                                    </p>
-                                    <button 
-                                      onClick={() => setEndpointParams(prev => ({
-                                        ...prev,
-                                        [ep.id]: [...(prev[ep.id] || []), { key: '', value: '' }]
-                                      }))}
-                                      className="text-[10px] text-emerald-500 hover:text-emerald-400 font-bold"
-                                    >
-                                      + ADD PARAM
-                                    </button>
-                                  </div>
-                                  <div className="space-y-2">
-                                    {(endpointParams[ep.id] || []).map((param, idx) => (
-                                      <div key={idx} className="flex gap-2">
-                                        <input 
-                                          placeholder="Key"
-                                          value={param.key}
-                                          onChange={(e) => {
-                                            const newParams = [...(endpointParams[ep.id] || [])];
-                                            newParams[idx] = { ...newParams[idx], key: e.target.value };
-                                            setEndpointParams(prev => ({ ...prev, [ep.id]: newParams }));
-                                          }}
-                                          className="flex-1 bg-black/20 border border-zinc-800 rounded-lg px-3 py-2 text-xs outline-none focus:border-emerald-500/30"
-                                        />
-                                        <input 
-                                          placeholder="Value"
-                                          value={param.value}
-                                          onChange={(e) => {
-                                            const newParams = [...(endpointParams[ep.id] || [])];
-                                            newParams[idx] = { ...newParams[idx], value: e.target.value };
-                                            setEndpointParams(prev => ({ ...prev, [ep.id]: newParams }));
-                                          }}
-                                          className="flex-1 bg-black/20 border border-zinc-800 rounded-lg px-3 py-2 text-xs outline-none focus:border-emerald-500/30"
-                                        />
-                                        <button 
-                                          onClick={() => {
-                                            const newParams = (endpointParams[ep.id] || []).filter((_, i) => i !== idx);
-                                            setEndpointParams(prev => ({ ...prev, [ep.id]: newParams }));
-                                          }}
-                                          className="text-zinc-700 hover:text-red-500 px-2"
-                                        >
-                                          ×
-                                        </button>
-                                      </div>
-                                    ))}
-                                    {(endpointParams[ep.id] || []).length === 0 && (
-                                      <p className="text-[10px] text-zinc-700 italic font-medium">No parameters defined for this request.</p>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
 
-                              {activeTabs[ep.id] === 'payload' && (
-                                <div className="space-y-3">
-                                  <p className="text-[10px] text-zinc-500 uppercase font-black tracking-widest">Preview Body</p>
-                                  <pre className="text-xs font-mono text-zinc-400 bg-black/40 p-4 rounded-xl border border-zinc-800/50">
-                                    {ep.method === 'GET' ? '// No body for GET requests' : 
-                                      JSON.stringify((endpointParams[ep.id] || []).reduce((acc, curr) => ({ ...acc, [curr.key]: curr.value }), {}), null, 2)
-                                    }
-                                  </pre>
-                                </div>
-                              )}
-
-                              {activeTabs[ep.id] === 'curl' && (
-                                <div className="space-y-3">
-                                  <p className="text-[10px] text-zinc-500 uppercase font-black tracking-widest">cURL Command</p>
-                                  <pre className="text-xs font-mono text-zinc-400 bg-black/40 p-4 rounded-xl border border-zinc-800/50 overflow-x-auto">
-                                    {generateCurl(api, ep, endpointParams[ep.id])}
-                                  </pre>
-                                </div>
-                              )}
-
-                              {activeTabs[ep.id] === 'logs' && (
-                                <div className="space-y-4">
-                                  <p className="text-[10px] text-zinc-500 uppercase font-black tracking-widest">Recent Activity</p>
-                                  <div className="space-y-2">
-                                    {(endpointLogs[ep.id] || []).map(log => (
-                                      <div key={log.id} className="space-y-2">
-                                        <div className="p-3 bg-black/20 rounded-xl border border-zinc-800/50 flex justify-between items-center">
-                                          <div className="flex items-center gap-3">
-                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${log.status >= 400 ? 'bg-red-500/10 text-red-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
-                                              {log.status}
-                                            </span>
-                                            <span className="text-[10px] text-zinc-600 font-mono">{formatDate(log.timestamp)}</span>
-                                          </div>
-                                          <button 
-                                            onClick={() => setExpandedLogId(expandedLogId === log.id ? null : log.id)}
-                                            className="text-[10px] text-zinc-500 hover:text-white font-bold"
-                                          >
-                                            {expandedLogId === log.id ? 'HIDE' : 'VIEW'}
-                                          </button>
-                                        </div>
-                                        {expandedLogId === log.id && (
-                                          <pre className="text-[10px] font-mono text-zinc-400 bg-black/60 p-4 rounded-xl border border-zinc-800/50 overflow-x-auto max-h-40">
-                                            {JSON.stringify(JSON.parse(log.response_body), null, 2)}
-                                          </pre>
-                                        )}
-                                      </div>
-                                    ))}
-                                    {(endpointLogs[ep.id] || []).length === 0 && (
-                                      <p className="text-[10px] text-zinc-700 italic font-medium">No logs found for this endpoint.</p>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                          
-                          {testResults[ep.id] && (
-                            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 space-y-4 animate-in fade-in slide-in-from-top-4 duration-500">
-                              <div className="flex justify-between items-center">
-                                <div className="flex items-center gap-3">
-                                  <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-black">Response</span>
-                                  <span className="text-[10px] text-zinc-600 font-mono">{formatDate(testResults[ep.id].timestamp)}</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <span className={`text-[10px] px-3 py-1 rounded-full font-black uppercase ${testResults[ep.id].status >= 400 ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'}`}>
-                                    {testResults[ep.id].status} {testResults[ep.id].statusText}
-                                  </span>
-                                  <button onClick={() => setTestResults(prev => {
-                                    const next = { ...prev };
-                                    delete next[ep.id];
-                                    return next;
-                                  })} className="text-zinc-600 hover:text-zinc-400 text-xs">Clear</button>
-                                </div>
-                              </div>
-                              <pre className="text-xs font-mono text-zinc-300 bg-black/50 p-5 rounded-2xl border border-zinc-800 overflow-x-auto max-h-[400px]">
-                                {JSON.stringify(testResults[ep.id].data, null, 2)}
-                              </pre>
-                            </div>
-                          )}
                         </div>
                       ))}
                     </div>
@@ -432,6 +294,223 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
           </main>
         </div>
       </div>
+
+      {/* Endpoint Detail Modal */}
+      {selectedEndpoint && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setSelectedEndpoint(null)} />
+          
+          <div className="relative w-full max-w-4xl bg-zinc-950 border-2 border-gold-500/20 rounded-[2.5rem] shadow-2xl shadow-gold-500/5 overflow-hidden animate-in zoom-in-95 duration-300">
+            <div className="flex flex-col h-[85vh] max-h-[800px]">
+              {/* Modal Header */}
+              <div className="p-8 border-b border-zinc-800/50 bg-zinc-900/20">
+                <div className="flex justify-between items-start">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-3">
+                      <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border ${
+                        selectedEndpoint.method === 'GET' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
+                        selectedEndpoint.method === 'POST' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                        'bg-zinc-800 text-zinc-400 border-zinc-700'
+                      }`}>
+                        {selectedEndpoint.method}
+                      </span>
+                      <h2 className="text-3xl font-black text-white tracking-tighter uppercase">{selectedEndpoint.name}</h2>
+                    </div>
+                    <p className="text-xs text-zinc-500 font-mono bg-black/40 px-3 py-1.5 rounded-xl border border-zinc-800/50 inline-block">
+                      {api.base_url}{selectedEndpoint.path}
+                    </p>
+                  </div>
+                  <button 
+                    onClick={() => setSelectedEndpoint(null)}
+                    className="w-10 h-10 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-xl flex items-center justify-center transition-colors text-zinc-500 hover:text-white"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div className="flex gap-8 mt-8 border-b border-zinc-800/50">
+                  {['params', 'payload', 'curl', 'logs'].map((tab) => (
+                    <button 
+                      key={tab}
+                      onClick={() => {
+                        setActiveEndpointTab(tab as any);
+                        if (tab === 'logs') fetchLogs(selectedEndpoint.id);
+                      }}
+                      className={`pb-4 text-xs font-black uppercase tracking-[0.2em] transition-all relative ${activeEndpointTab === tab ? 'text-emerald-400' : 'text-zinc-600 hover:text-zinc-400'}`}
+                    >
+                      {tab}
+                      {activeEndpointTab === tab && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Modal Content */}
+              <div className="flex-1 overflow-y-auto p-8 space-y-8">
+                {activeEndpointTab === 'params' && (
+                  <div className="space-y-6">
+                    <div className="flex justify-between items-center">
+                      <div className="space-y-1">
+                        <h3 className="text-sm font-black text-white uppercase tracking-widest">Parameters</h3>
+                        <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest">
+                          {selectedEndpoint.method === 'GET' ? 'Query String' : 'Request Body'}
+                        </p>
+                      </div>
+                      <button 
+                        onClick={() => setEndpointParams(prev => ({
+                          ...prev,
+                          [selectedEndpoint.id]: [...(prev[selectedEndpoint.id] || []), { key: '', value: '' }]
+                        }))}
+                        className="px-4 py-2 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                      >
+                        + Add Param
+                      </button>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      {(endpointParams[selectedEndpoint.id] || []).map((param, idx) => (
+                        <div key={idx} className="flex gap-3 animate-in fade-in slide-in-from-left-2 duration-200">
+                          <input 
+                            placeholder="Key"
+                            value={param.key}
+                            onChange={(e) => {
+                              const newParams = [...(endpointParams[selectedEndpoint.id] || [])];
+                              newParams[idx] = { ...newParams[idx], key: e.target.value };
+                              setEndpointParams(prev => ({ ...prev, [selectedEndpoint.id]: newParams }));
+                            }}
+                            className="flex-1 bg-zinc-900/50 border-2 border-zinc-800/50 rounded-2xl px-5 py-3 text-sm text-white outline-none focus:border-emerald-500/30 transition-all"
+                          />
+                          <input 
+                            placeholder="Value"
+                            value={param.value}
+                            onChange={(e) => {
+                              const newParams = [...(endpointParams[selectedEndpoint.id] || [])];
+                              newParams[idx] = { ...newParams[idx], value: e.target.value };
+                              setEndpointParams(prev => ({ ...prev, [selectedEndpoint.id]: newParams }));
+                            }}
+                            className="flex-1 bg-zinc-900/50 border-2 border-zinc-800/50 rounded-2xl px-5 py-3 text-sm text-white outline-none focus:border-emerald-500/30 transition-all"
+                          />
+                          <button 
+                            onClick={() => {
+                              const newParams = (endpointParams[selectedEndpoint.id] || []).filter((_, i) => i !== idx);
+                              setEndpointParams(prev => ({ ...prev, [selectedEndpoint.id]: newParams }));
+                            }}
+                            className="w-12 h-12 bg-red-500/5 hover:bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center justify-center text-red-500 transition-all"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                      {(endpointParams[selectedEndpoint.id] || []).length === 0 && (
+                        <div className="text-center py-12 bg-zinc-900/20 border-2 border-dashed border-zinc-800/50 rounded-[2rem]">
+                          <p className="text-xs text-zinc-600 font-black uppercase tracking-[0.2em]">No parameters defined</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {activeEndpointTab === 'payload' && (
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-black text-white uppercase tracking-widest">Response Payload</h3>
+                    {testResults[selectedEndpoint.id] ? (
+                      <div className="space-y-4 animate-in fade-in duration-300">
+                        <div className="flex items-center gap-4">
+                          <span className={`px-3 py-1 rounded-lg text-[10px] font-black border ${
+                            testResults[selectedEndpoint.id].status >= 200 && testResults[selectedEndpoint.id].status < 300
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                              : 'bg-red-500/10 text-red-400 border-red-500/20'
+                          }`}>
+                            STATUS: {testResults[selectedEndpoint.id].status}
+                          </span>
+                          <span className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest">
+                            {formatDate(testResults[selectedEndpoint.id].timestamp)}
+                          </span>
+                        </div>
+                        <pre className="bg-black/40 p-6 rounded-[2rem] border-2 border-zinc-800/50 text-[11px] font-mono text-emerald-400 overflow-x-auto leading-relaxed">
+                          {JSON.stringify(testResults[selectedEndpoint.id].data, null, 2)}
+                        </pre>
+                      </div>
+                    ) : (
+                      <div className="text-center py-20 bg-zinc-900/20 border-2 border-dashed border-zinc-800/50 rounded-[2rem]">
+                        <p className="text-xs text-zinc-600 font-black uppercase tracking-[0.2em]">No test results yet</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {activeEndpointTab === 'curl' && (
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                      <h3 className="text-sm font-black text-white uppercase tracking-widest">cURL Command</h3>
+                      <button 
+                        onClick={() => {
+                          navigator.clipboard.writeText(generateCurl(api, selectedEndpoint, endpointParams[selectedEndpoint.id] || []));
+                          showToast('cURL copied to clipboard!', 'success');
+                        }}
+                        className="text-[10px] text-emerald-500 hover:text-emerald-400 font-black uppercase tracking-widest"
+                      >
+                        Copy Command
+                      </button>
+                    </div>
+                    <pre className="bg-black/40 p-6 rounded-[2rem] border-2 border-zinc-800/50 text-[11px] font-mono text-zinc-400 overflow-x-auto whitespace-pre-wrap leading-relaxed">
+                      {generateCurl(api, selectedEndpoint, endpointParams[selectedEndpoint.id] || [])}
+                    </pre>
+                  </div>
+                )}
+
+                {activeEndpointTab === 'logs' && (
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-black text-white uppercase tracking-widest">Recent Activity</h3>
+                    <div className="space-y-3">
+                      {(endpointLogs[selectedEndpoint.id] || []).map((log: any) => (
+                        <div key={log.id} className="p-5 bg-zinc-900/30 border border-zinc-800/50 rounded-2xl flex justify-between items-center hover:bg-zinc-900/50 transition-all">
+                          <div className="flex items-center gap-4">
+                            <span className={`w-2 h-2 rounded-full ${log.status >= 200 && log.status < 300 ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                            <div>
+                              <p className="text-xs font-black text-white uppercase tracking-widest">Status {log.status}</p>
+                              <p className="text-[10px] text-zinc-600 font-bold">{formatDate(log.timestamp)}</p>
+                            </div>
+                          </div>
+                          <button 
+                            onClick={() => setTestResults(prev => ({ ...prev, [selectedEndpoint.id]: { status: log.status, data: JSON.parse(log.response_body), timestamp: new Date(log.timestamp) } }))}
+                            className="text-[10px] text-emerald-500 hover:text-emerald-400 font-black uppercase tracking-widest"
+                          >
+                            View
+                          </button>
+                        </div>
+                      ))}
+                      {(endpointLogs[selectedEndpoint.id] || []).length === 0 && (
+                        <div className="text-center py-20 bg-zinc-900/20 border-2 border-dashed border-zinc-800/50 rounded-[2rem]">
+                          <p className="text-xs text-zinc-600 font-black uppercase tracking-[0.2em]">No logs available</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-8 border-t border-zinc-800/50 bg-zinc-900/20 flex justify-end gap-4">
+                <Button 
+                  variant="secondary" 
+                  onClick={() => setSelectedEndpoint(null)}
+                  className="px-8"
+                >
+                  CLOSE
+                </Button>
+                <Button 
+                  onClick={() => handleTest(selectedEndpoint)}
+                  isLoading={loading}
+                  className="px-12 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 shadow-emerald-500/20"
+                >
+                  EXECUTE REQUEST
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ConfirmModal 
         isOpen={!!deleteId}

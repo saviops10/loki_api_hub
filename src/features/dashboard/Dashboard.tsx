@@ -8,6 +8,7 @@ import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
 import { LoadingSpinner, EmptyState } from '../../components/Feedback';
 import { ConfirmModal } from '../../components/Modal';
+import { ProfileMenu } from '../../components/ProfileMenu';
 
 export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void }> = ({ onSelectApi }) => {
   const { user, setUser, showToast } = useApp();
@@ -40,6 +41,7 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void }> = ({
       authEndpoint: formData.get('authEndpoint'),
       authUsername: formData.get('authUsername'),
       authPassword: formData.get('authPassword'),
+      authPayloadTemplate: formData.get('authPayloadTemplate'),
       authConfig: {
         apiKey: formData.get('apiKey'),
         clientId: formData.get('clientId'),
@@ -90,63 +92,31 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void }> = ({
 
   const [showApiKey, setShowApiKey] = useState(false);
 
-  const handleLogout = async () => {
-    await call('/api/auth/logout', { method: 'POST' });
-    setUser(null);
-    showToast('Logged out successfully', 'success');
-  };
-
   const filteredApis = apis.filter(api => 
     api.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     api.base_url.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
-    <div className="min-h-screen bg-zinc-950 p-8">
+    <div className="min-h-screen bg-[#050505] p-4 sm:p-8">
       <div className="max-w-7xl mx-auto space-y-12">
-        <header className="flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-center relative overflow-hidden">
-              <span className="text-2xl relative z-10">🐍</span>
+        <header className="flex justify-between items-center bg-zinc-900/20 p-6 rounded-[2rem] border border-zinc-800/50 backdrop-blur-xl">
+          <div className="flex items-center gap-5">
+            <div className="w-14 h-14 bg-emerald-500/10 border-2 border-emerald-500/20 rounded-2xl flex items-center justify-center relative overflow-hidden group">
+              <span className="text-3xl relative z-10 group-hover:scale-110 transition-transform duration-500">🐍</span>
               <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/20 to-transparent" />
             </div>
-            <div className="space-y-1">
-              <h1 className="text-4xl font-black text-white tracking-tight">DASHBOARD</h1>
-              <div className="flex items-center gap-4">
-                <p className="text-zinc-500 font-medium">Welcome back, <span className="text-emerald-400">{user?.username}</span></p>
-                {user?.api_key && (
-                  <div className="flex items-center gap-2 bg-zinc-900 px-3 py-1 rounded-lg border border-zinc-800">
-                    <span className="text-[10px] text-zinc-500 uppercase font-bold">API KEY:</span>
-                    <code className="text-[10px] text-emerald-500 font-mono">
-                      {showApiKey ? user.api_key : `${user.api_key.slice(0, 8)}****`}
-                    </code>
-                    <div className="flex items-center gap-1 ml-1">
-                      <button 
-                        onClick={() => setShowApiKey(!showApiKey)}
-                        className="text-[10px] text-zinc-600 hover:text-white transition-colors"
-                        title={showApiKey ? "Hide Key" : "Show Key"}
-                      >
-                        {showApiKey ? '👁️' : '👁️‍🗨️'}
-                      </button>
-                      <button 
-                        onClick={() => {
-                          navigator.clipboard.writeText(user.api_key!);
-                          showToast('API Key copied!', 'success');
-                        }}
-                        className="text-[10px] text-zinc-600 hover:text-white transition-colors"
-                        title="Copy Key"
-                      >
-                        📋
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
+            <div className="space-y-0.5">
+              <h1 className="text-3xl font-black text-white tracking-tighter">LOKI HUB</h1>
+              <p className="text-[10px] uppercase tracking-[0.4em] font-black text-zinc-600">API Management Platform</p>
             </div>
           </div>
-          <div className="flex gap-2">
-            <Button variant="secondary" onClick={fetchApis} icon={<span>🔄</span>}>Refresh</Button>
-            <Button variant="ghost" onClick={handleLogout}>Logout</Button>
+          
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" onClick={fetchApis} className="hidden sm:flex">
+              <span className="text-lg">🔄</span>
+            </Button>
+            <ProfileMenu />
           </div>
         </header>
 
@@ -162,8 +132,8 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void }> = ({
                   <option value="oauth2">OAuth2 / Token</option>
                 </Input>
                 
-                <div className="p-4 bg-zinc-950/50 rounded-2xl border border-zinc-800 space-y-4">
-                  <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-black">Authentication Config</p>
+                <div className="p-4 bg-zinc-950/50 rounded-2xl border border-gold-500/20 space-y-4 shadow-lg shadow-gold-500/5">
+                  <p className="text-[10px] uppercase tracking-widest text-gold-500 font-black">Authentication Config</p>
                   <Input label="API Key" name="apiKey" placeholder="For API Key auth" />
                   <div className="grid grid-cols-2 gap-2">
                     <Input label="Client ID" name="clientId" placeholder="OAuth2" />
@@ -176,6 +146,13 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void }> = ({
                     <Input label="Username" name="authUsername" defaultValue={editingApi?.auth_username} placeholder="User" />
                     <Input label="Password" name="authPassword" defaultValue={editingApi?.auth_password} type="password" placeholder="Pass" />
                   </div>
+                  <Input 
+                    label="Auth Payload Template (JSON)" 
+                    name="authPayloadTemplate" 
+                    defaultValue={editingApi?.auth_payload_template} 
+                    placeholder='{ "user": "{{username}}", "pass": "{{password}}" }' 
+                  />
+                  <p className="text-[9px] text-zinc-500 italic">Use {"{{username}}"} and {"{{password}}"} as placeholders.</p>
                 </div>
 
                 <div className="flex gap-2">
@@ -187,99 +164,79 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void }> = ({
 
             <Card title="Cloudflare Stack Status">
               <div className="space-y-4">
-                <div className="flex items-center justify-between p-3 bg-zinc-900/50 rounded-xl border border-zinc-800">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xl">🗄️</span>
+                <div className="flex items-center justify-between p-4 bg-zinc-900/50 rounded-2xl border border-zinc-800/50">
+                  <div className="flex items-center gap-4">
+                    <span className="text-2xl">🗄️</span>
                     <div>
-                      <p className="text-xs font-bold text-white">D1 Database</p>
-                      <p className="text-[10px] text-zinc-500">Relational Data</p>
+                      <p className="text-sm font-black text-white">D1 Database</p>
+                      <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest">Relational Data</p>
                     </div>
                   </div>
-                  <span className="text-[10px] font-black text-emerald-500 uppercase">Connected</span>
+                  <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Connected</span>
                 </div>
-                <div className="flex items-center justify-between p-3 bg-zinc-900/50 rounded-xl border border-zinc-800">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xl">⚡</span>
+                <div className="flex items-center justify-between p-4 bg-zinc-900/50 rounded-2xl border border-zinc-800/50">
+                  <div className="flex items-center gap-4">
+                    <span className="text-2xl">⚡</span>
                     <div>
-                      <p className="text-xs font-bold text-white">KV Storage</p>
-                      <p className="text-[10px] text-zinc-500">Fast Sessions</p>
+                      <p className="text-sm font-black text-white">KV Storage</p>
+                      <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest">Fast Sessions</p>
                     </div>
                   </div>
-                  <span className="text-[10px] font-black text-emerald-500 uppercase">Active</span>
+                  <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Active</span>
                 </div>
-                <div className="flex items-center justify-between p-3 bg-zinc-900/50 rounded-xl border border-zinc-800">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xl">📦</span>
+                <div className="flex items-center justify-between p-4 bg-zinc-900/50 rounded-2xl border border-zinc-800/50">
+                  <div className="flex items-center gap-4">
+                    <span className="text-2xl">📦</span>
                     <div>
-                      <p className="text-xs font-bold text-white">R2 Storage</p>
-                      <p className="text-[10px] text-zinc-500">Large Payloads</p>
+                      <p className="text-sm font-black text-white">R2 Storage</p>
+                      <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest">Large Payloads</p>
                     </div>
                   </div>
-                  <span className="text-[10px] font-black text-emerald-500 uppercase">Ready</span>
-                </div>
-              </div>
-            </Card>
-            <Card title="Security & Account">
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <p className="text-[10px] uppercase font-bold text-zinc-500">API Key Management</p>
-                  <Button 
-                    variant="secondary" 
-                    size="sm" 
-                    className="w-full text-[10px]"
-                    onClick={handleRegenerateKey}
-                  >
-                    Regenerate API Key
-                  </Button>
-                </div>
-                <div className="pt-4 border-t border-zinc-800 space-y-2">
-                  <p className="text-[10px] uppercase font-bold text-red-500/50">Danger Zone</p>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="w-full text-[10px] text-red-500 hover:bg-red-500/10"
-                    onClick={() => setShowDeleteAccountModal(true)}
-                  >
-                    Delete Account
-                  </Button>
+                  <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Ready</span>
                 </div>
               </div>
             </Card>
           </aside>
 
           <main className="lg:col-span-8 space-y-6">
-            <div className="flex gap-4 border-b border-zinc-800 pb-px">
-              <button 
-                onClick={() => setActiveTab('apis')}
-                className={`pb-4 text-xs font-bold uppercase tracking-widest transition-colors relative ${activeTab === 'apis' ? 'text-emerald-500' : 'text-zinc-500 hover:text-zinc-300'}`}
-              >
-                APIs & Endpoints
-                {activeTab === 'apis' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-500" />}
-              </button>
-              <button 
-                onClick={() => setActiveTab('cli')}
-                className={`pb-4 text-xs font-bold uppercase tracking-widest transition-colors relative ${activeTab === 'cli' ? 'text-emerald-500' : 'text-zinc-500 hover:text-zinc-300'}`}
-              >
-                Loki CLI
-                {activeTab === 'cli' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-500" />}
-              </button>
-            </div>
+        <div className="flex flex-col sm:flex-row gap-4 sm:items-center justify-between">
+          <div className="flex p-1.5 bg-zinc-900/50 rounded-2xl border border-zinc-800/50 w-fit">
+            <button 
+              onClick={() => setActiveTab('apis')}
+              className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'apis' ? 'bg-emerald-500 text-zinc-950 shadow-lg shadow-emerald-500/20' : 'text-zinc-500 hover:text-white'}`}
+            >
+              APIs
+            </button>
+            <button 
+              onClick={() => setActiveTab('cli')}
+              className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'cli' ? 'bg-emerald-500 text-zinc-950 shadow-lg shadow-emerald-500/20' : 'text-zinc-500 hover:text-white'}`}
+            >
+              CLI
+            </button>
+          </div>
+          <Button variant="primary" onClick={() => setEditingApi({} as ApiConfig)} icon={<span className="text-lg">+</span>}>
+            Register New API
+          </Button>
+        </div>
 
-            {activeTab === 'apis' ? (
-              <>
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div className="flex items-center gap-4">
-                <h2 className="text-xl font-bold text-white">Your APIs</h2>
-                <span className="text-xs text-zinc-500 bg-zinc-900 px-3 py-1 rounded-full border border-zinc-800">
-                  {filteredApis.length} Active
-                </span>
+        {activeTab === 'apis' ? (
+          <>
+            <div className="flex flex-col md:flex-row gap-6 justify-between items-end">
+              <div className="space-y-1">
+                <h2 className="text-2xl font-black text-white uppercase tracking-tight">Your APIs</h2>
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-[10px] uppercase font-black tracking-widest text-zinc-600">
+                    {filteredApis.length} Active Connections
+                  </span>
+                </div>
               </div>
-              <div className="w-full md:w-64">
+              <div className="w-full md:w-80">
                 <Input 
                   placeholder="Search APIs..." 
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="bg-zinc-900/50 border-zinc-800"
+                  className="bg-zinc-900/30 border-zinc-800/50"
                 />
               </div>
             </div>
@@ -287,15 +244,18 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void }> = ({
             {loading && apis.length === 0 ? (
               <LoadingSpinner label="Fetching your APIs..." />
             ) : filteredApis.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 {filteredApis.map(api => (
                   <Card 
                     key={api.id} 
                     title={
                       <div className="flex justify-between items-center">
-                        <span>{api.name}</span>
+                        <span className="truncate">{api.name}</span>
                         {api.token && (
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" title="Token Active" />
+                          <div className="flex items-center gap-2 bg-emerald-500/10 px-2 py-1 rounded-lg border border-emerald-500/20">
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                            <span className="text-[8px] font-black text-emerald-500 uppercase tracking-widest">Active</span>
+                          </div>
                         )}
                       </div>
                     } 
@@ -303,24 +263,35 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void }> = ({
                     onClick={() => onSelectApi(api)}
                     footer={
                       <div className="flex justify-between items-center">
-                        <div className="flex gap-3">
+                        <div className="flex gap-4">
                           <button 
                             onClick={(e) => { e.stopPropagation(); setEditingApi(api); }}
-                            className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold hover:text-white"
+                            className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-black hover:text-emerald-500 transition-colors"
                           >
                             Edit
                           </button>
                           <button 
                             onClick={(e) => { e.stopPropagation(); setDeleteApiId(api.id); }}
-                            className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold hover:text-red-400"
+                            className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-black hover:text-red-500 transition-colors"
                           >
                             Delete
                           </button>
                         </div>
-                        <span className="text-emerald-500 text-xs font-medium">View Details →</span>
+                        <span className="text-emerald-500 text-[10px] font-black uppercase tracking-widest group-hover:translate-x-1 transition-transform">View Details →</span>
                       </div>
                     }
-                  />
+                  >
+                    <div className="flex gap-2">
+                      <span className="bg-zinc-800/50 text-zinc-500 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-zinc-800">
+                        {api.auth_type}
+                      </span>
+                      {api.last_refresh && (
+                        <span className="text-[10px] text-zinc-600 font-bold flex items-center gap-1">
+                          Last sync: {new Date(api.last_refresh).toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
+                  </Card>
                 ))}
               </div>
             ) : (
