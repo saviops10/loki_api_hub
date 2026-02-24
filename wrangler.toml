@@ -1,0 +1,23 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "loki-api-hub"
+pages_build_output_dir = "dist"
+compatibility_date = "2024-01-01"
+
+[vars]
+NODE_ENV = "production"
+
+# Configuração do Banco de Dados Relacional (D1)
+[[d1_databases]]
+binding = "DB"
+database_name = "loki-db-prod"
+database_id = "50816303-3353-45dd-9b31-d85d65ff138a" # Gerado via 'npx wrangler d1 create'
+
+# Configuração de Cache/Sessões (KV)
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "94f3d1f376cd4986988e9c3f346e011d" # Gerado via 'npx wrangler kv:namespace create'
+
+# Configuração de Armazenamento de Arquivos/Payloads (R2)
+[[r2_buckets]]
+binding = "PAYLOADS"
+bucket_name = "loki-r2-payloads" # Gerado via 'npx wrangler r2 bucket create'
