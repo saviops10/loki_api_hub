@@ -12,7 +12,7 @@ database_name = "loki-db-prod"
 database_id = "SEU_DATABASE_ID_AQUI" # Gerado ao rodar 'npx wrangler d1 create loki-db-prod'
 
 [[kv_namespaces]]
-binding = "SESSIONS"
+binding = "SESSION"
 id = "SEU_KV_NAMESPACE_ID_AQUI" # Gerado ao rodar 'npx wrangler kv:namespace create loki-kv-sessions'
 
 [[r2_buckets]]
