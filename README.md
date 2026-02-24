@@ -1,20 +1,15 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# 🟢 L.O.K.I. API Hub
+> **The Shapeshifter of Serverless Architectures.**
 
-# Run and deploy your AI Studio app
+L.O.K.I. é um Hub de API Serverless de alta performance projetado para centralizar, monitorar e escalar suas integrações de microsserviços sem a necessidade de gerenciar infraestrutura.
 
-This contains everything you need to run your app locally.
+---
 
-View your app in AI Studio: https://ai.studio/apps/5b74f178-a94f-4109-bf58-59cdca3c381b
+## 🛠 O que significa L.O.K.I.?
 
-## Run Locally
+Mais do que um nome, L.O.K.I. é o nosso manifesto técnico. Cada letra representa um pilar fundamental da nossa arquitetura:
 
-**Prerequisites:**  Node.js
-
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+* **[L]ogging:** Rastreabilidade total. Cada requisição é logada em tempo real com metadados detalhados para debugging instantâneo.
+* **[O]peration:** Orquestração inteligente. Transforme payloads, valide esquemas e gerencie rotas complexas através de lógica serverless.
+* **[K]ey-access:** Segurança em primeiro lugar. Gestão centralizada de chaves de API, scopes de acesso e autenticação robusta.
+* **[I]ntegration:** Conectividade universal. Uma ponte fluida entre seus serviços internos, APIs de terceiros e bancos de dados.
