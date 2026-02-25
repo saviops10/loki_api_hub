@@ -103,7 +103,7 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpen
         <header className="flex justify-between items-center bg-zinc-900/20 p-6 rounded-[2rem] border border-zinc-800/50 backdrop-blur-xl">
           <div className="flex items-center gap-5">
             <div className="w-14 h-14 bg-emerald-500/10 border-2 border-emerald-500/20 rounded-2xl flex items-center justify-center relative overflow-hidden group">
-              <span className="text-3xl relative z-10 group-hover:scale-110 transition-transform duration-500">🐍</span>
+              <img src="https://pub-bc0d075e4ee24efcaa48a8fee3ff5518.r2.dev/icon_loki-api-hub" alt="Loki Icon" className="w-10 h-10 relative z-10 group-hover:scale-110 transition-transform duration-500" referrerPolicy="no-referrer" />
               <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/20 to-transparent" />
             </div>
             <div className="space-y-0.5">
@@ -112,6 +112,12 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpen
             </div>
           </div>
           
+          <div className="hidden md:flex items-center gap-8 text-[10px] font-black uppercase tracking-widest text-zinc-500">
+            <button onClick={() => setActiveTab('apis')} className={`hover:text-emerald-500 transition-colors ${activeTab === 'apis' ? 'text-emerald-500' : ''}`}>APIs & Endpoints</button>
+            <button onClick={() => setActiveTab('cli')} className={`hover:text-emerald-500 transition-colors ${activeTab === 'cli' ? 'text-emerald-500' : ''}`}>Loki CLI</button>
+            <button onClick={() => showToast(`Your Master API Key: ${user?.api_key}`, 'success')} className="hover:text-emerald-500 transition-colors">API Key</button>
+          </div>
+
           <div className="flex items-center gap-4">
             <Button variant="ghost" onClick={fetchApis} className="hidden sm:flex">
               <span className="text-lg">🔄</span>
@@ -129,19 +135,19 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpen
                 <Input label="Auth Type" name="authType" defaultValue={editingApi?.auth_type} as="select">
                   <option value="none">No Auth</option>
                   <option value="apikey">API Key</option>
-                  <option value="oauth2">OAuth2 / Token</option>
+                  <option value="oauth2">OAuth2</option>
+                  <option value="bearer">Bearer Token</option>
                 </Input>
                 
                 <div className="p-4 bg-zinc-950/50 rounded-2xl border border-gold-500/20 space-y-4 shadow-lg shadow-gold-500/5">
                   <p className="text-[10px] uppercase tracking-widest text-gold-500 font-black">Authentication Config</p>
-                  <Input label="API Key" name="apiKey" placeholder="For API Key auth" />
                   <div className="grid grid-cols-2 gap-2">
-                    <Input label="Client ID" name="clientId" placeholder="OAuth2" />
-                    <Input label="Client Secret" name="clientSecret" placeholder="OAuth2" />
+                    <Input label="Client ID / API Key" name="apiKey" placeholder="ID or Key" />
+                    <Input label="Client Secret (Optional)" name="clientSecret" placeholder="Secret" />
                   </div>
                   <hr className="border-zinc-800" />
                   <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-black">Token Auto-Refresh (POST)</p>
-                  <Input label="Auth Endpoint" name="authEndpoint" defaultValue={editingApi?.auth_endpoint} placeholder="https://auth.example.com/login" />
+                  <Input label="Token Endpoint (POST)" name="authEndpoint" defaultValue={editingApi?.auth_endpoint} placeholder="https://auth.example.com/token" />
                   <div className="grid grid-cols-2 gap-2">
                     <Input label="Username" name="authUsername" defaultValue={editingApi?.auth_username} placeholder="User" />
                     <Input label="Password" name="authPassword" defaultValue={editingApi?.auth_password} type="password" placeholder="Pass" />

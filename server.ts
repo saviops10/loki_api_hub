@@ -739,14 +739,18 @@ app.post("/api/proxy", validateApiKey, async (req, res) => {
       // Apply Auth
       if (api.auth_type === 'apikey' && authConfig.apiKey) {
         headers['X-API-Key'] = authConfig.apiKey;
-      } else if (api.auth_type === 'oauth2') {
+      } else if (api.auth_type === 'oauth2' || api.auth_type === 'bearer') {
         const token = tokenOverride || (api.token ? decrypt(api.token) : null);
         if (token) {
           const cleanToken = String(token).trim();
-          headers['Authorization'] = `Bearer ${cleanToken}`;
-          console.log(`[PROXY] Authorization header injected for API ${apiId}. Token starts with: ${cleanToken.substring(0, 10)}...`);
+          // Ensure no duplicate "Bearer " prefix
+          const bearerToken = cleanToken.toLowerCase().startsWith('bearer ') 
+            ? cleanToken 
+            : `Bearer ${cleanToken}`;
+          headers['Authorization'] = bearerToken;
+          console.log(`[PROXY] Authorization header injected for API ${apiId}. Type: ${api.auth_type}`);
         } else {
-          console.warn(`[PROXY] No token found for API ${apiId} even though auth_type is oauth2`);
+          console.warn(`[PROXY] No token found for API ${apiId} even though auth_type is ${api.auth_type}`);
         }
       } else {
         console.log(`[PROXY] No auth applied for API ${apiId} (auth_type: ${api.auth_type})`);

@@ -40,7 +40,7 @@ export const RegisterForm: React.FC<{ onToggle: () => void }> = ({ onToggle }) =
           <div className="flex justify-center">
             <div className="w-24 h-24 bg-emerald-500/5 border-2 border-emerald-500/30 rounded-[2.5rem] flex items-center justify-center relative overflow-hidden group shadow-xl shadow-emerald-500/5">
               <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/20 to-transparent opacity-50" />
-              <span className="text-5xl relative z-10 group-hover:scale-110 transition-transform duration-700">🐍</span>
+              <img src="https://pub-bc0d075e4ee24efcaa48a8fee3ff5518.r2.dev/icon_loki-api-hub" alt="Loki Icon" className="w-16 h-16 relative z-10 group-hover:scale-110 transition-transform duration-700" referrerPolicy="no-referrer" />
               <div className="absolute -bottom-4 -right-4 w-12 h-12 bg-emerald-500/20 rounded-full blur-2xl" />
             </div>
           </div>
@@ -58,6 +58,7 @@ export const RegisterForm: React.FC<{ onToggle: () => void }> = ({ onToggle }) =
             <Input label="Professional Email" name="email" type="email" placeholder="john@company.com" required />
             <Input label="Username" name="username" placeholder="johndoe" required />
             <Input label="Password" name="password" type="password" placeholder="••••••••" required />
+            <Input label="Confirm Password" name="confirmPassword" type="password" placeholder="••••••••" required />
           </div>
           
           <div className="bg-zinc-900/50 p-4 rounded-2xl border border-gold-500/20 space-y-3 shadow-lg shadow-gold-500/5">
