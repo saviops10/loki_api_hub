@@ -4,11 +4,12 @@ import { LoginForm } from './features/auth/LoginForm';
 import { RegisterForm } from './features/auth/RegisterForm';
 import { Dashboard } from './features/dashboard/Dashboard';
 import { ApiDetail } from './features/api-detail/ApiDetail';
+import { AdminPanel } from './features/admin/AdminPanel';
 import { ApiConfig } from './types';
 
 const AppContent: React.FC = () => {
   const { user } = useApp();
-  const [view, setView] = useState<'login' | 'register' | 'dashboard' | 'api-detail'>('login');
+  const [view, setView] = useState<'login' | 'register' | 'dashboard' | 'api-detail' | 'admin'>('login');
   const [selectedApi, setSelectedApi] = useState<ApiConfig | null>(null);
 
   // Simple routing logic
@@ -24,6 +25,12 @@ const AppContent: React.FC = () => {
     );
   }
 
+  if (view === 'admin') {
+    return (
+      <AdminPanel onBack={() => setView('dashboard')} />
+    );
+  }
+
   if (selectedApi) {
     return (
       <ApiDetail 
@@ -36,6 +43,7 @@ const AppContent: React.FC = () => {
   return (
     <Dashboard 
       onSelectApi={(api) => setSelectedApi(api)} 
+      onOpenAdmin={() => setView('admin')}
     />
   );
 };

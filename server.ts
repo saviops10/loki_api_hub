@@ -26,8 +26,11 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE,
+    full_name TEXT,
+    email TEXT UNIQUE,
     password TEXT,
     api_key TEXT UNIQUE,
+    is_admin INTEGER DEFAULT 0,
     failed_attempts INTEGER DEFAULT 0,
     lock_until DATETIME
   );
@@ -82,7 +85,7 @@ const ensureColumns = () => {
   const tables = {
     apis: ['auth_endpoint', 'auth_username', 'auth_password', 'auth_payload_template', 'token', 'token_expires_at', 'last_refresh'],
     endpoints: ['group_name'],
-    users: ['failed_attempts', 'lock_until', 'api_key', 'full_name', 'email']
+    users: ['failed_attempts', 'lock_until', 'api_key', 'full_name', 'email', 'is_admin']
   };
 
   for (const [table, columns] of Object.entries(tables)) {
@@ -106,9 +109,14 @@ const seedUser = () => {
   const apiKey = `loki_${crypto.randomBytes(16).toString('hex')}`;
   
   if (!user) {
-    db.prepare("INSERT INTO users (username, password, api_key) VALUES (?, ?, ?)").run("admin", hashedPassword, apiKey);
+    db.prepare("INSERT INTO users (username, full_name, email, password, api_key, is_admin) VALUES (?, ?, ?, ?, ?, ?)")
+      .run("admin", "System Administrator", "admin@loki.hub", hashedPassword, apiKey, 1);
     console.log("Test user 'admin' created.");
   } else {
+    // Ensure admin has is_admin = 1
+    if (user.is_admin !== 1) {
+      db.prepare("UPDATE users SET is_admin = 1 WHERE username = ?").run("admin");
+    }
     // Update existing user to use bcrypt if needed
     if (!user.password.startsWith('$2a$')) {
       db.prepare("UPDATE users SET password = ? WHERE username = ?").run(hashedPassword, "admin");
@@ -308,7 +316,13 @@ app.post("/api/auth/login", (req, res) => {
     db.prepare("UPDATE users SET failed_attempts = 0, lock_until = NULL WHERE id = ?").run(user.id);
     const sessionToken = crypto.randomBytes(32).toString('hex');
     db.prepare("INSERT INTO sessions (token, user_id) VALUES (?, ?)").run(sessionToken, user.id);
-    res.json({ id: user.id, username: user.username, api_key: user.api_key, session_token: sessionToken });
+    res.json({ 
+      id: user.id, 
+      username: user.username, 
+      api_key: user.api_key, 
+      is_admin: user.is_admin,
+      session_token: sessionToken 
+    });
   } else {
     console.warn(`[AUTH] Login failure: Invalid password (${username})`);
     const attempts = user.failed_attempts + 1;
@@ -335,9 +349,14 @@ app.post("/api/auth/register", (req, res) => {
   try {
     const hashedPassword = bcrypt.hashSync(password, 10);
     const apiKey = `loki_${crypto.randomBytes(16).toString('hex')}`;
-    const info = db.prepare("INSERT INTO users (username, full_name, email, password, api_key) VALUES (?, ?, ?, ?, ?)").run(username, fullName, email, hashedPassword, apiKey);
-    console.log(`[AUTH] Registration success: ${username}. API Key generated.`);
-    res.json({ id: info.lastInsertRowid, username, apiKey });
+    
+    // Check if this is the first user
+    const userCount = (db.prepare("SELECT COUNT(*) as count FROM users").get() as any).count;
+    const isAdmin = userCount === 0 ? 1 : 0;
+
+    const info = db.prepare("INSERT INTO users (username, full_name, email, password, api_key, is_admin) VALUES (?, ?, ?, ?, ?, ?)").run(username, fullName, email, hashedPassword, apiKey, isAdmin);
+    console.log(`[AUTH] Registration success: ${username}. API Key generated. Admin: ${isAdmin}`);
+    res.json({ id: info.lastInsertRowid, username, apiKey, is_admin: isAdmin });
   } catch (e: any) {
     console.error(`[AUTH] Registration failure: ${e.message}`);
     if (e.message.includes('UNIQUE constraint failed: users.email')) {
@@ -796,6 +815,42 @@ app.post("/api/proxy", validateApiKey, async (req, res) => {
     console.error("Proxy error:", error);
     res.status(500).json({ error: error.message });
   }
+});
+
+// --- ADMIN ROUTES ---
+const adminMiddleware = (req: any, res: any, next: any) => {
+  const sessionToken = req.headers['x-loki-session-token'];
+  if (!sessionToken) return res.status(401).json({ error: "Unauthorized" });
+
+  const session = db.prepare("SELECT user_id FROM sessions WHERE token = ?").get(sessionToken) as any;
+  if (!session) return res.status(401).json({ error: "Invalid session" });
+
+  const user = db.prepare("SELECT is_admin FROM users WHERE id = ?").get(session.user_id) as any;
+  if (!user || user.is_admin !== 1) return res.status(403).json({ error: "Forbidden: Admin access required" });
+
+  req.userId = session.user_id;
+  next();
+};
+
+app.get("/api/admin/users", adminMiddleware, (req, res) => {
+  const users = db.prepare("SELECT id, username, full_name, email, is_admin FROM users").all();
+  res.json(users);
+});
+
+app.get("/api/admin/apis", adminMiddleware, (req, res) => {
+  const apis = db.prepare(`
+    SELECT a.*, u.username as owner_name 
+    FROM apis a 
+    JOIN users u ON a.user_id = u.id
+  `).all();
+  res.json(apis);
+});
+
+app.post("/api/admin/users/:id/toggle-admin", adminMiddleware, (req, res) => {
+  const { id } = req.params;
+  const { isAdmin } = req.body;
+  db.prepare("UPDATE users SET is_admin = ? WHERE id = ?").run(isAdmin, id);
+  res.json({ success: true });
 });
 
 // Vite middleware for development

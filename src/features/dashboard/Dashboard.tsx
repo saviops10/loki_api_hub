@@ -10,7 +10,7 @@ import { LoadingSpinner, EmptyState } from '../../components/Feedback';
 import { ConfirmModal } from '../../components/Modal';
 import { ProfileMenu } from '../../components/ProfileMenu';
 
-export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void }> = ({ onSelectApi }) => {
+export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpenAdmin: () => void }> = ({ onSelectApi, onOpenAdmin }) => {
   const { user, setUser, showToast } = useApp();
   const [activeTab, setActiveTab] = useState<'apis' | 'cli'>('apis');
   const [apis, setApis] = useLocalStorage<ApiConfig[]>('smart_api_hub_apis', []);
@@ -116,7 +116,7 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void }> = ({
             <Button variant="ghost" onClick={fetchApis} className="hidden sm:flex">
               <span className="text-lg">🔄</span>
             </Button>
-            <ProfileMenu />
+            <ProfileMenu onOpenAdmin={onOpenAdmin} />
           </div>
         </header>
 
@@ -162,40 +162,7 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void }> = ({
               </form>
             </Card>
 
-            <Card title="Cloudflare Stack Status">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-4 bg-zinc-900/50 rounded-2xl border border-zinc-800/50">
-                  <div className="flex items-center gap-4">
-                    <span className="text-2xl">🗄️</span>
-                    <div>
-                      <p className="text-sm font-black text-white">D1 Database</p>
-                      <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest">Relational Data</p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Connected</span>
-                </div>
-                <div className="flex items-center justify-between p-4 bg-zinc-900/50 rounded-2xl border border-zinc-800/50">
-                  <div className="flex items-center gap-4">
-                    <span className="text-2xl">⚡</span>
-                    <div>
-                      <p className="text-sm font-black text-white">KV Storage</p>
-                      <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest">Fast Sessions</p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Active</span>
-                </div>
-                <div className="flex items-center justify-between p-4 bg-zinc-900/50 rounded-2xl border border-zinc-800/50">
-                  <div className="flex items-center gap-4">
-                    <span className="text-2xl">📦</span>
-                    <div>
-                      <p className="text-sm font-black text-white">R2 Storage</p>
-                      <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest">Large Payloads</p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Ready</span>
-                </div>
-              </div>
-            </Card>
+            {/* Cloudflare Stack Status moved to Admin Panel */}
           </aside>
 
           <main className="lg:col-span-8 space-y-6">

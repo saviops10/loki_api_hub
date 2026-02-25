@@ -4,7 +4,7 @@ import { useApi } from '../hooks/useApi';
 import { Button } from './Button';
 import { Input } from './Input';
 
-export const ProfileMenu: React.FC = () => {
+export const ProfileMenu: React.FC<{ onOpenAdmin?: () => void }> = ({ onOpenAdmin }) => {
   const { user, setUser, showToast } = useApp();
   const { call, loading } = useApi();
   const [isOpen, setIsOpen] = useState(false);
@@ -110,6 +110,15 @@ export const ProfileMenu: React.FC = () => {
             <div className="p-2">
               {!isChangingPassword ? (
                 <div className="space-y-1">
+                  {user.is_admin === 1 && onOpenAdmin && (
+                    <button 
+                      onClick={() => { onOpenAdmin(); setIsOpen(false); }}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 rounded-2xl transition-all"
+                    >
+                      <span className="text-lg">🛡️</span>
+                      <span className="font-black uppercase tracking-widest text-xs">Admin Panel</span>
+                    </button>
+                  )}
                   <button 
                     onClick={() => setIsChangingPassword(true)}
                     className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-400 hover:text-white hover:bg-zinc-800/50 rounded-2xl transition-all"
