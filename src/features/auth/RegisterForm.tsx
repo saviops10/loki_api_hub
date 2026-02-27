@@ -20,6 +20,11 @@ export const RegisterForm: React.FC<{ onToggle: () => void }> = ({ onToggle }) =
     const formData = new FormData(e.currentTarget);
     const data = Object.fromEntries(formData);
     
+    if (data.password !== data.confirmPassword) {
+      showToast('Passwords do not match', 'error');
+      return;
+    }
+    
     // Convert checkbox values to boolean
     const payload = {
       ...data,

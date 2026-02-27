@@ -35,6 +35,14 @@ db.exec(`
     lock_until DATETIME
   );
 
+  CREATE TABLE IF NOT EXISTS api_keys (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    key TEXT UNIQUE,
+    name TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE IF NOT EXISTS apis (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
@@ -736,6 +744,8 @@ app.post("/api/proxy", validateApiKey, async (req, res) => {
         ...customHeaders
       };
 
+      let finalBody = body ? { ...body } : {};
+
       // Apply Auth
       if (api.auth_type === 'apikey' && authConfig.apiKey) {
         headers['X-API-Key'] = authConfig.apiKey;
@@ -743,33 +753,27 @@ app.post("/api/proxy", validateApiKey, async (req, res) => {
         const token = tokenOverride || (api.token ? decrypt(api.token) : null);
         if (token) {
           const cleanToken = String(token).trim();
-          // Ensure no duplicate "Bearer " prefix
           const bearerToken = cleanToken.toLowerCase().startsWith('bearer ') 
             ? cleanToken 
             : `Bearer ${cleanToken}`;
           headers['Authorization'] = bearerToken;
-          console.log(`[PROXY] Authorization header injected for API ${apiId}. Type: ${api.auth_type}`);
-        } else {
-          console.warn(`[PROXY] No token found for API ${apiId} even though auth_type is ${api.auth_type}`);
         }
-      } else {
-        console.log(`[PROXY] No auth applied for API ${apiId} (auth_type: ${api.auth_type})`);
+      } else if (api.auth_type === 'none') {
+        // If "No Auth" but credentials provided, append to body as per user request
+        if (authConfig.apiKey) finalBody.UserName = authConfig.apiKey;
+        if (authConfig.clientSecret) finalBody.Password = authConfig.clientSecret;
       }
-
-      console.log(`[PROXY] Executing ${endpoint.method} to ${url}`);
-      console.log(`[PROXY] Headers:`, JSON.stringify(headers));
 
       const fetchOptions: any = {
         method: endpoint.method,
         headers,
       };
 
-      if (['POST', 'PUT', 'PATCH'].includes(endpoint.method) && body) {
-        fetchOptions.body = JSON.stringify(body);
+      if (['POST', 'PUT', 'PATCH'].includes(endpoint.method)) {
+        fetchOptions.body = JSON.stringify(finalBody);
       }
 
       const response = await fetch(url, fetchOptions);
-      console.log(`[PROXY] Response from target: ${response.status} ${response.statusText}`);
       return response;
     };
 
@@ -855,6 +859,82 @@ app.post("/api/admin/users/:id/toggle-admin", adminMiddleware, (req, res) => {
   const { isAdmin } = req.body;
   db.prepare("UPDATE users SET is_admin = ? WHERE id = ?").run(isAdmin, id);
   res.json({ success: true });
+});
+
+// Duplicate Endpoint
+app.post("/api/endpoints/:id/duplicate", validateApiKey, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const ep = db.prepare("SELECT * FROM endpoints WHERE id = ?").get(id) as any;
+    if (!ep) return res.status(404).json({ error: "Endpoint not found" });
+
+    const result = db.prepare(`
+      INSERT INTO endpoints (api_id, name, path, method, group_name, is_favorite)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(ep.api_id, `${ep.name} (Copy)`, ep.path, ep.method, ep.group_name, ep.is_favorite);
+
+    res.json({ id: result.lastInsertRowid });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Clear Logs
+app.delete("/api/endpoints/:id/logs", validateApiKey, async (req, res) => {
+  try {
+    const { id } = req.params;
+    db.prepare("DELETE FROM logs WHERE endpoint_id = ?").run(id);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// API Keys Management
+app.get("/api/auth/keys", validateApiKey, (req, res) => {
+  const userId = (req as any).userId;
+  const keys = db.prepare("SELECT * FROM api_keys WHERE user_id = ?").all(userId);
+  res.json(keys);
+});
+
+app.post("/api/auth/keys", validateApiKey, (req, res) => {
+  const userId = (req as any).userId;
+  const { name } = req.body;
+  
+  // Plan limits (simulated for now based on user request)
+  const user = db.prepare("SELECT is_admin FROM users WHERE id = ?").get(userId) as any;
+  const keyCount = (db.prepare("SELECT COUNT(*) as count FROM api_keys WHERE user_id = ?").get(userId) as any).count;
+  
+  // Default plan limits
+  let limit = 1; // Free
+  // We could check a 'plan' column if we had one, but let's assume based on admin or just hardcode for now
+  // In a real app, we'd have a 'plan' column in users table.
+  
+  if (keyCount >= limit && user.is_admin !== 1) {
+    return res.status(403).json({ error: `Plan limit reached: ${limit} key(s) allowed.` });
+  }
+
+  const newKey = `loki_${crypto.randomBytes(16).toString('hex')}`;
+  const result = db.prepare("INSERT INTO api_keys (user_id, key, name) VALUES (?, ?, ?)").run(userId, newKey, name || "New Key");
+  res.json({ id: result.lastInsertRowid, key: newKey, name: name || "New Key" });
+});
+
+app.delete("/api/auth/keys/:id", validateApiKey, (req, res) => {
+  const { id } = req.params;
+  const userId = (req as any).userId;
+  db.prepare("DELETE FROM api_keys WHERE id = ? AND user_id = ?").run(id, userId);
+  res.json({ success: true });
+});
+
+app.put("/api/auth/profile", validateApiKey, (req, res) => {
+  const userId = (req as any).userId;
+  const { fullName, email } = req.body;
+  try {
+    db.prepare("UPDATE users SET full_name = ?, email = ? WHERE id = ?").run(fullName, email, userId);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Vite middleware for development

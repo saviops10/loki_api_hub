@@ -9,6 +9,7 @@ export const ProfileMenu: React.FC<{ onOpenAdmin?: () => void }> = ({ onOpenAdmi
   const { call, loading } = useApi();
   const [isOpen, setIsOpen] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
 
   const handleLogout = async () => {
@@ -45,6 +46,24 @@ export const ProfileMenu: React.FC<{ onOpenAdmin?: () => void }> = ({ onOpenAdmi
     if (result && result.api_key) {
       setUser({ ...user!, api_key: result.api_key });
       showToast('API Key regenerated!', 'success');
+    }
+  };
+
+  const handleUpdateProfile = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const fullName = formData.get('fullName') as string;
+    const email = formData.get('email') as string;
+
+    const result = await call('/api/auth/profile', {
+      method: 'PUT',
+      body: JSON.stringify({ fullName, email }),
+    });
+
+    if (result) {
+      showToast('Profile updated!', 'success');
+      setUser({ ...user!, full_name: fullName, email });
+      setIsEditingProfile(false);
     }
   };
 
@@ -108,7 +127,7 @@ export const ProfileMenu: React.FC<{ onOpenAdmin?: () => void }> = ({ onOpenAdmi
             </div>
 
             <div className="p-2">
-              {!isChangingPassword ? (
+              {!isChangingPassword && !isEditingProfile ? (
                 <div className="space-y-1">
                   {user.is_admin === 1 && onOpenAdmin && (
                     <button 
@@ -119,6 +138,13 @@ export const ProfileMenu: React.FC<{ onOpenAdmin?: () => void }> = ({ onOpenAdmi
                       <span className="font-black uppercase tracking-widest text-xs">Admin Panel</span>
                     </button>
                   )}
+                  <button 
+                    onClick={() => setIsEditingProfile(true)}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-400 hover:text-white hover:bg-zinc-800/50 rounded-2xl transition-all"
+                  >
+                    <span className="text-lg">👤</span>
+                    <span className="font-medium">Edit Profile</span>
+                  </button>
                   <button 
                     onClick={() => setIsChangingPassword(true)}
                     className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-400 hover:text-white hover:bg-zinc-800/50 rounded-2xl transition-all"
@@ -141,6 +167,18 @@ export const ProfileMenu: React.FC<{ onOpenAdmin?: () => void }> = ({ onOpenAdmi
                     <span className="text-lg">🚪</span>
                     <span className="font-black uppercase tracking-widest text-xs">Sign Out</span>
                   </button>
+                </div>
+              ) : isEditingProfile ? (
+                <div className="p-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-black uppercase tracking-widest text-white">Edit Profile</h4>
+                    <button onClick={() => setIsEditingProfile(false)} className="text-xs text-zinc-500 hover:text-white">Cancel</button>
+                  </div>
+                  <form onSubmit={handleUpdateProfile} className="space-y-3">
+                    <Input label="Full Name" name="fullName" defaultValue={user.full_name} required />
+                    <Input label="Email" name="email" type="email" defaultValue={user.email} required />
+                    <Button type="submit" className="w-full" isLoading={loading}>Save Changes</Button>
+                  </form>
                 </div>
               ) : (
                 <div className="p-4 space-y-4">

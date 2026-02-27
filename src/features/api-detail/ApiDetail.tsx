@@ -84,6 +84,22 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
     }
   };
 
+  const handleDuplicateEndpoint = async (id: number) => {
+    const result = await call(`/api/endpoints/${id}/duplicate`, { method: 'POST' });
+    if (result) {
+      showToast('Endpoint duplicated!', 'success');
+      fetchEndpoints();
+    }
+  };
+
+  const handleClearLogs = async (id: number) => {
+    const result = await call(`/api/endpoints/${id}/logs`, { method: 'DELETE' });
+    if (result) {
+      showToast('Logs cleared!', 'success');
+      setEndpointLogs(prev => ({ ...prev, [id]: [] }));
+    }
+  };
+
   const filteredEndpoints = endpoints.filter(ep => 
     ep.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     ep.path.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -141,6 +157,34 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
           </div>
           
           <div className="flex items-center gap-4">
+            {api.auth_endpoint && (
+              <div className="hidden lg:flex items-center gap-4 bg-zinc-900/50 px-4 py-2 rounded-2xl border border-zinc-800/50">
+                <div className="flex flex-col items-start">
+                  <span className="text-[8px] uppercase tracking-[0.2em] font-black text-zinc-600">Token Status</span>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-1.5 h-1.5 rounded-full ${api.token ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-red-500 animate-pulse'}`} />
+                    <span className={`text-[10px] font-black uppercase ${api.token ? 'text-emerald-500' : 'text-red-500'}`}>
+                      {api.token ? 'Active' : 'Missing'}
+                    </span>
+                  </div>
+                </div>
+                <div className="h-8 w-px bg-zinc-800" />
+                <div className="flex flex-col items-start">
+                  <span className="text-[8px] uppercase tracking-[0.2em] font-black text-zinc-600">Expires At</span>
+                  <span className={`text-[10px] font-black ${api.token_expires_at && new Date(api.token_expires_at) < new Date() ? 'text-red-400' : 'text-zinc-400'}`}>
+                    {api.token_expires_at ? formatDate(api.token_expires_at) : 'N/A'}
+                  </span>
+                </div>
+                <button 
+                  onClick={handleRefreshToken}
+                  disabled={isRefreshingToken}
+                  className="p-2 hover:bg-zinc-800 rounded-xl text-emerald-500 transition-all disabled:opacity-50"
+                  title="Refresh Token"
+                >
+                  {isRefreshingToken ? '⌛' : '🔄'}
+                </button>
+              </div>
+            )}
             <div className="hidden lg:flex flex-col items-end gap-1 mr-4">
               <span className="text-[9px] uppercase tracking-[0.2em] font-black text-zinc-600">Authentication</span>
               <span className="bg-emerald-500/10 text-emerald-400 px-3 py-1 rounded-full border border-emerald-500/20 text-[10px] font-black uppercase">
@@ -153,43 +197,6 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <aside className="lg:col-span-4 space-y-6">
-            {api.auth_endpoint && (
-              <Card title="Token Status">
-                <div className="space-y-4">
-                  {!api.token && api.auth_type === 'oauth2' && (
-                    <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-center">
-                      <p className="text-xs text-red-400 font-black animate-pulse uppercase tracking-widest">
-                        ⚠️ No Token Found
-                      </p>
-                    </div>
-                  )}
-                  
-                  <div className="grid grid-cols-1 gap-3">
-                    <div className="p-4 bg-zinc-900/50 rounded-2xl border border-zinc-800/50 space-y-1">
-                      <p className="text-[10px] uppercase font-black text-zinc-600 tracking-widest">Last Refresh</p>
-                      <p className="text-xs text-zinc-400 font-bold">{api.last_refresh ? formatDate(api.last_refresh) : 'Never'}</p>
-                    </div>
-                    <div className="p-4 bg-zinc-900/50 rounded-2xl border border-zinc-800/50 space-y-1">
-                      <p className="text-[10px] uppercase font-black text-zinc-600 tracking-widest">Expires At</p>
-                      <p className={`text-xs font-bold ${api.token_expires_at && new Date(api.token_expires_at) < new Date() ? 'text-red-400' : 'text-emerald-500'}`}>
-                        {api.token_expires_at ? formatDate(api.token_expires_at) : 'N/A'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <Button 
-                    variant="primary" 
-                    className="w-full"
-                    onClick={handleRefreshToken} 
-                    isLoading={isRefreshingToken}
-                    icon={<span>🔑</span>}
-                  >
-                    Refresh Token
-                  </Button>
-                </div>
-              </Card>
-            )}
-            
             <Card title="Add Endpoint">
               <form onSubmit={handleAddEndpoint} className="space-y-4">
                 <Input label="Name" name="name" placeholder="e.g. Get Users" required />
@@ -258,6 +265,13 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
                               </div>
                             </div>
                             <div className="flex items-center gap-3">
+                              <button 
+                                onClick={() => handleDuplicateEndpoint(ep.id)}
+                                className="text-zinc-600 hover:text-emerald-500 text-[10px] font-black transition-colors uppercase tracking-widest"
+                                title="Duplicate"
+                              >
+                                📋
+                              </button>
                               <Button 
                                 onClick={() => {
                                   setSelectedEndpoint(ep);
@@ -461,7 +475,15 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
 
                 {activeEndpointTab === 'logs' && (
                   <div className="space-y-4">
-                    <h3 className="text-sm font-black text-white uppercase tracking-widest">Recent Activity</h3>
+                    <div className="flex justify-between items-center">
+                      <h3 className="text-sm font-black text-white uppercase tracking-widest">Recent Activity</h3>
+                      <button 
+                        onClick={() => handleClearLogs(selectedEndpoint.id)}
+                        className="text-[10px] text-red-500 hover:text-red-400 font-black uppercase tracking-widest"
+                      >
+                        Clear History
+                      </button>
+                    </div>
                     <div className="space-y-3">
                       {(endpointLogs[selectedEndpoint.id] || []).map((log: any) => (
                         <div key={log.id} className="p-5 bg-zinc-900/30 border border-zinc-800/50 rounded-2xl flex justify-between items-center hover:bg-zinc-900/50 transition-all">

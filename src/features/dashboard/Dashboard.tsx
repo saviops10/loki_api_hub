@@ -10,9 +10,117 @@ import { LoadingSpinner, EmptyState } from '../../components/Feedback';
 import { ConfirmModal } from '../../components/Modal';
 import { ProfileMenu } from '../../components/ProfileMenu';
 
+const ApiKeyManager: React.FC = () => {
+  const { call, loading } = useApi();
+  const { showToast } = useApp();
+  const [keys, setKeys] = useState<any[]>([]);
+  const [newKeyName, setNewKeyName] = useState('');
+
+  const fetchKeys = async () => {
+    const data = await call('/api/auth/keys');
+    if (data) setKeys(data);
+  };
+
+  useEffect(() => {
+    fetchKeys();
+  }, []);
+
+  const handleCreateKey = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const result = await call('/api/auth/keys', {
+      method: 'POST',
+      body: JSON.stringify({ name: newKeyName })
+    });
+    if (result) {
+      showToast('New API Key created!', 'success');
+      setNewKeyName('');
+      fetchKeys();
+    }
+  };
+
+  const handleDeleteKey = async (id: number) => {
+    const result = await call(`/api/auth/keys/${id}`, { method: 'DELETE' });
+    if (result) {
+      showToast('API Key deleted', 'success');
+      fetchKeys();
+    }
+  };
+
+  return (
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div className="lg:col-span-4 space-y-6">
+          <Card title="Create New Key">
+            <form onSubmit={handleCreateKey} className="space-y-4">
+              <Input 
+                label="Key Name" 
+                placeholder="e.g. Production, CLI, Mobile" 
+                value={newKeyName}
+                onChange={(e) => setNewKeyName(e.target.value)}
+                required 
+              />
+              <Button type="submit" className="w-full" isLoading={loading}>Generate Key</Button>
+              <p className="text-[10px] text-zinc-500 italic text-center">
+                Plan limits apply. Free: 1 key, Business: 3 keys.
+              </p>
+            </form>
+          </Card>
+        </div>
+
+        <div className="lg:col-span-8 space-y-6">
+          <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-black text-white uppercase tracking-tight">Your API Keys</h2>
+            <span className="text-[10px] uppercase font-black tracking-widest text-zinc-600">
+              {keys.length} Active Keys
+            </span>
+          </div>
+
+          <div className="grid gap-4">
+            {keys.map(k => (
+              <div key={k.id} className="bg-zinc-900/50 p-6 rounded-[2rem] border border-zinc-800 flex justify-between items-center group">
+                <div className="space-y-1">
+                  <h4 className="text-sm font-black text-white uppercase tracking-widest">{k.name}</h4>
+                  <div className="flex items-center gap-2">
+                    <code className="text-xs font-mono text-emerald-500">
+                      {k.key.substring(0, 8)}••••••••••••••••
+                    </code>
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(k.key);
+                        showToast('Full key copied to clipboard', 'success');
+                      }}
+                      className="p-1.5 hover:bg-zinc-800 rounded-lg text-zinc-500 hover:text-white transition-colors"
+                    >
+                      📋
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest">
+                    Created: {new Date(k.created_at).toLocaleDateString()}
+                  </p>
+                </div>
+                <button 
+                  onClick={() => handleDeleteKey(k.id)}
+                  className="text-[10px] uppercase tracking-widest font-black text-zinc-600 hover:text-red-500 transition-colors"
+                >
+                  Revoke
+                </button>
+              </div>
+            ))}
+            {keys.length === 0 && !loading && (
+              <div className="text-center py-20 bg-zinc-900/20 border-2 border-dashed border-zinc-800/50 rounded-[2rem]">
+                <p className="text-xs text-zinc-600 font-black uppercase tracking-[0.2em]">No API keys found</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpenAdmin: () => void }> = ({ onSelectApi, onOpenAdmin }) => {
   const { user, setUser, showToast } = useApp();
-  const [activeTab, setActiveTab] = useState<'apis' | 'cli'>('apis');
+  const [activeTab, setActiveTab] = useState<'apis' | 'cli' | 'keys'>('apis');
   const [apis, setApis] = useLocalStorage<ApiConfig[]>('smart_api_hub_apis', []);
   const [editingApi, setEditingApi] = useState<ApiConfig | null>(null);
   const [deleteApiId, setDeleteApiId] = useState<number | null>(null);
@@ -115,7 +223,7 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpen
           <div className="hidden md:flex items-center gap-8 text-[10px] font-black uppercase tracking-widest text-zinc-500">
             <button onClick={() => setActiveTab('apis')} className={`hover:text-emerald-500 transition-colors ${activeTab === 'apis' ? 'text-emerald-500' : ''}`}>APIs & Endpoints</button>
             <button onClick={() => setActiveTab('cli')} className={`hover:text-emerald-500 transition-colors ${activeTab === 'cli' ? 'text-emerald-500' : ''}`}>Loki CLI</button>
-            <button onClick={() => showToast(`Your Master API Key: ${user?.api_key}`, 'success')} className="hover:text-emerald-500 transition-colors">API Key</button>
+            <button onClick={() => setActiveTab('keys')} className={`hover:text-emerald-500 transition-colors ${activeTab === 'keys' ? 'text-emerald-500' : ''}`}>API Key</button>
           </div>
 
           <div className="flex items-center gap-4">
@@ -163,7 +271,7 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpen
 
                 <div className="flex gap-2">
                   {editingApi && <Button variant="ghost" className="flex-1" onClick={() => setEditingApi(null)}>Cancel</Button>}
-                  <Button type="submit" className="flex-1" isLoading={loading}>{editingApi ? 'Update' : 'Add'} API</Button>
+                  <Button type="submit" className="flex-1" isLoading={loading}>{editingApi ? 'Update API' : 'Register API'}</Button>
                 </div>
               </form>
             </Card>
@@ -187,9 +295,6 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpen
               CLI
             </button>
           </div>
-          <Button variant="primary" onClick={() => setEditingApi({} as ApiConfig)} icon={<span className="text-lg">+</span>}>
-            Register New API
-          </Button>
         </div>
 
         {activeTab === 'apis' ? (
@@ -274,7 +379,7 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpen
               />
             )}
           </>
-        ) : (
+        ) : activeTab === 'cli' ? (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="space-y-4">
               <h2 className="text-2xl font-black text-white uppercase tracking-tight">Loki CLI</h2>
@@ -354,6 +459,8 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpen
               </div>
             </div>
           </div>
+        ) : (
+          <ApiKeyManager />
         )}
       </main>
         </div>
