@@ -2,8 +2,8 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { Button } from '../../components/Button';
 
-const ICON_URL = "https://pub-bc0d075e4ee24efcaa48a8fee3ff5518.r2.dev/icon_loki-api-hub";
-const LOGO_URL = "https://pub-bc0d075e4ee24efcaa48a8fee3ff5518.r2.dev/logo_loki-api-hub";
+const ICON_URL = "https://pub-bc0d075e4ee24efcaa48a8fee3ff5518.r2.dev/meu-bucket-imagens/assets/icon_loki";
+const LOGO_URL = "https://pub-bc0d075e4ee24efcaa48a8fee3ff5518.r2.dev/meu-bucket-imagens/assets/logo_loki";
 
 export const LandingPage: React.FC<{ onGetStarted: () => void, onAbout: () => void, onPlans: () => void }> = ({ onGetStarted, onAbout, onPlans }) => {
   return (

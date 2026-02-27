@@ -211,7 +211,7 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpen
         <header className="flex justify-between items-center bg-zinc-900/20 p-6 rounded-[2rem] border border-zinc-800/50 backdrop-blur-xl">
           <div className="flex items-center gap-5">
             <div className="w-14 h-14 bg-emerald-500/10 border-2 border-emerald-500/20 rounded-2xl flex items-center justify-center relative overflow-hidden group">
-              <img src="https://pub-bc0d075e4ee24efcaa48a8fee3ff5518.r2.dev/icon_loki-api-hub" alt="Loki Icon" className="w-10 h-10 relative z-10 group-hover:scale-110 transition-transform duration-500" referrerPolicy="no-referrer" />
+              <img src="https://pub-bc0d075e4ee24efcaa48a8fee3ff5518.r2.dev/meu-bucket-imagens/assets/icon_loki" alt="Loki Icon" className="w-10 h-10 relative z-10 group-hover:scale-110 transition-transform duration-500" referrerPolicy="no-referrer" />
               <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/20 to-transparent" />
             </div>
             <div className="space-y-0.5">

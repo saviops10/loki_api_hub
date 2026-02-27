@@ -34,7 +34,18 @@ db.exec(`
     failed_attempts INTEGER DEFAULT 0,
     lock_until DATETIME
   );
+`);
 
+// Migration: Ensure new columns exist in users table
+const tableInfo = db.prepare("PRAGMA table_info(users)").all() as any[];
+const columns = tableInfo.map(c => c.name);
+if (!columns.includes('full_name')) db.exec("ALTER TABLE users ADD COLUMN full_name TEXT");
+if (!columns.includes('email')) db.exec("ALTER TABLE users ADD COLUMN email TEXT");
+if (!columns.includes('is_admin')) db.exec("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0");
+if (!columns.includes('failed_attempts')) db.exec("ALTER TABLE users ADD COLUMN failed_attempts INTEGER DEFAULT 0");
+if (!columns.includes('lock_until')) db.exec("ALTER TABLE users ADD COLUMN lock_until DATETIME");
+
+db.exec(`
   CREATE TABLE IF NOT EXISTS api_keys (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
@@ -220,10 +231,15 @@ const LoginSchema = z.object({
 });
 
 const RegisterSchema = z.object({
-  username: z.string().min(3),
-  fullName: z.string().min(3),
-  email: z.string().email(),
-  password: z.string().regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/),
+  username: z.string().min(3, "Username must be at least 3 characters"),
+  fullName: z.string().min(3, "Full name must be at least 3 characters"),
+  email: z.string().email("Invalid email address"),
+  password: z.string()
+    .min(8, "Password must be at least 8 characters")
+    .regex(/[a-z]/, "Password must contain at least one lowercase letter")
+    .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
+    .regex(/\d/, "Password must contain at least one number")
+    .regex(/[@$!%*?&]/, "Password must contain at least one special character (@$!%*?&)"),
   termsAccepted: z.boolean().refine(v => v === true, "You must accept the terms"),
   privacyAccepted: z.boolean().refine(v => v === true, "You must accept the privacy policy")
 });
