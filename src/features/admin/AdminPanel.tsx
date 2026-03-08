@@ -14,6 +14,7 @@ export const AdminPanel: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('users');
   const [users, setUsers] = useState<any[]>([]);
   const [apis, setApis] = useState<any[]>([]);
+  const [systemStatus, setSystemStatus] = useState<any>(null);
 
   const fetchData = async () => {
     if (activeTab === 'users') {
@@ -22,6 +23,9 @@ export const AdminPanel: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     } else if (activeTab === 'apis') {
       const data = await call('/api/admin/apis');
       if (data) setApis(data);
+    } else if (activeTab === 'system') {
+      const data = await call('/api/admin/system-status');
+      if (data) setSystemStatus(data);
     }
   };
 
@@ -174,42 +178,42 @@ export const AdminPanel: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                   </div>
                 )}
 
-                {activeTab === 'system' && (
+                {activeTab === 'system' && systemStatus && (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <Card title="D1 Database">
                       <div className="space-y-4">
                         <div className="flex items-center justify-between">
                           <span className="text-zinc-500 text-sm">Status</span>
-                          <span className="text-loki-primary text-xs font-black uppercase tracking-widest">Connected</span>
+                          <span className="text-loki-primary text-xs font-black uppercase tracking-widest">{systemStatus.d1.status}</span>
                         </div>
                         <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                          <div className="h-full bg-loki-primary w-[85%]" />
+                          <div className="h-full bg-loki-primary transition-all duration-1000" style={{ width: `${systemStatus.d1.percentage}%` }} />
                         </div>
-                        <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest">Storage: 12.4 MB / 100 MB</p>
+                        <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest">Storage: {systemStatus.d1.usage}</p>
                       </div>
                     </Card>
                     <Card title="KV Storage">
                       <div className="space-y-4">
                         <div className="flex items-center justify-between">
                           <span className="text-zinc-500 text-sm">Status</span>
-                          <span className="text-loki-primary text-xs font-black uppercase tracking-widest">Active</span>
+                          <span className="text-loki-primary text-xs font-black uppercase tracking-widest">{systemStatus.kv.status}</span>
                         </div>
                         <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                          <div className="h-full bg-loki-primary w-[40%]" />
+                          <div className="h-full bg-loki-primary transition-all duration-1000" style={{ width: `${systemStatus.kv.percentage}%` }} />
                         </div>
-                        <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest">Keys: 1,240 Active</p>
+                        <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest">Keys: {systemStatus.kv.keys}</p>
                       </div>
                     </Card>
                     <Card title="R2 Storage">
                       <div className="space-y-4">
                         <div className="flex items-center justify-between">
                           <span className="text-zinc-500 text-sm">Status</span>
-                          <span className="text-loki-primary text-xs font-black uppercase tracking-widest">Ready</span>
+                          <span className="text-loki-primary text-xs font-black uppercase tracking-widest">{systemStatus.r2.status}</span>
                         </div>
                         <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                          <div className="h-full bg-loki-primary w-[15%]" />
+                          <div className="h-full bg-loki-primary transition-all duration-1000" style={{ width: `${systemStatus.r2.percentage}%` }} />
                         </div>
-                        <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest">Buckets: 3 Total</p>
+                        <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest">Buckets: {systemStatus.r2.buckets}</p>
                       </div>
                     </Card>
                   </div>

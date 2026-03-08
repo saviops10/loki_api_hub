@@ -953,6 +953,30 @@ app.put("/api/auth/profile", validateApiKey, (req, res) => {
   }
 });
 
+app.get("/api/admin/system-status", adminMiddleware, (req, res) => {
+  const status = {
+    d1: {
+      status: "Connected",
+      usage: "12.4 MB / 100 MB",
+      percentage: 12
+    },
+    kv: {
+      status: "Active",
+      keys: "1,240 Active",
+      percentage: 40
+    },
+    r2: {
+      status: "Ready",
+      buckets: "3 Total",
+      percentage: 15
+    }
+  };
+  
+  // In a real Cloudflare environment, we would check the bindings here.
+  // For now, we return simulated data that reflects the environment.
+  res.json(status);
+});
+
 // Vite middleware for development
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
