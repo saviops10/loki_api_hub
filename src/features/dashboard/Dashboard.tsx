@@ -9,6 +9,7 @@ import { Input } from '../../components/Input';
 import { LoadingSpinner, EmptyState } from '../../components/Feedback';
 import { ConfirmModal } from '../../components/Modal';
 import { ProfileMenu } from '../../components/ProfileMenu';
+import { LokiIcon } from '../../components/Branding';
 
 const ApiKeyManager: React.FC = () => {
   const { call, loading } = useApi();
@@ -81,7 +82,7 @@ const ApiKeyManager: React.FC = () => {
                 <div className="space-y-1">
                   <h4 className="text-sm font-black text-white uppercase tracking-widest">{k.name}</h4>
                   <div className="flex items-center gap-2">
-                    <code className="text-xs font-mono text-emerald-500">
+                    <code className="text-xs font-mono text-loki-primary">
                       {k.key.substring(0, 8)}••••••••••••••••
                     </code>
                     <button 
@@ -206,13 +207,13 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpen
   );
 
   return (
-    <div className="min-h-screen bg-[#050505] p-4 sm:p-8">
+    <div className="min-h-screen bg-loki-bg p-4 sm:p-8">
       <div className="max-w-7xl mx-auto space-y-12">
-        <header className="flex justify-between items-center bg-zinc-900/20 p-6 rounded-[2rem] border border-zinc-800/50 backdrop-blur-xl">
+        <header className="flex justify-between items-center bg-zinc-900/20 p-6 rounded-[2rem] border border-white/10 backdrop-blur-xl">
           <div className="flex items-center gap-5">
-            <div className="w-14 h-14 bg-emerald-500/10 border-2 border-emerald-500/20 rounded-2xl flex items-center justify-center relative overflow-hidden group">
-              <img src="https://pub-bc0d075e4ee24efcaa48a8fee3ff5518.r2.dev/meu-bucket-imagens/assets/icon_loki" alt="Loki Icon" className="w-10 h-10 relative z-10 group-hover:scale-110 transition-transform duration-500" referrerPolicy="no-referrer" />
-              <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/20 to-transparent" />
+            <div className="w-14 h-14 bg-loki-primary/10 border-2 border-loki-primary/20 rounded-2xl flex items-center justify-center relative overflow-hidden group">
+              <LokiIcon className="w-10 h-10 relative z-10 group-hover:scale-110 transition-transform duration-500" />
+              <div className="absolute inset-0 bg-gradient-to-br from-loki-primary/20 to-transparent" />
             </div>
             <div className="space-y-0.5">
               <h1 className="text-3xl font-black text-white tracking-tighter">LOKI HUB</h1>
@@ -221,9 +222,9 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpen
           </div>
           
           <div className="hidden md:flex items-center gap-8 text-[10px] font-black uppercase tracking-widest text-zinc-500">
-            <button onClick={() => setActiveTab('apis')} className={`hover:text-emerald-500 transition-colors ${activeTab === 'apis' ? 'text-emerald-500' : ''}`}>APIs & Endpoints</button>
-            <button onClick={() => setActiveTab('cli')} className={`hover:text-emerald-500 transition-colors ${activeTab === 'cli' ? 'text-emerald-500' : ''}`}>Loki CLI</button>
-            <button onClick={() => setActiveTab('keys')} className={`hover:text-emerald-500 transition-colors ${activeTab === 'keys' ? 'text-emerald-500' : ''}`}>API Key</button>
+            <button onClick={() => setActiveTab('apis')} className={`hover:text-loki-accent transition-colors ${activeTab === 'apis' ? 'text-loki-accent' : ''}`}>APIs & Endpoints</button>
+            <button onClick={() => setActiveTab('cli')} className={`hover:text-loki-accent transition-colors ${activeTab === 'cli' ? 'text-loki-accent' : ''}`}>Loki CLI</button>
+            <button onClick={() => setActiveTab('keys')} className={`hover:text-loki-accent transition-colors ${activeTab === 'keys' ? 'text-loki-accent' : ''}`}>API Key</button>
           </div>
 
           <div className="flex items-center gap-4">
@@ -247,8 +248,8 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpen
                   <option value="bearer">Bearer Token</option>
                 </Input>
                 
-                <div className="p-4 bg-zinc-950/50 rounded-2xl border border-gold-500/20 space-y-4 shadow-lg shadow-gold-500/5">
-                  <p className="text-[10px] uppercase tracking-widest text-gold-500 font-black">Authentication Config</p>
+                <div className="p-4 bg-zinc-950/50 rounded-2xl border border-loki-accent/20 space-y-4 shadow-lg shadow-loki-accent/5">
+                  <p className="text-[10px] uppercase tracking-widest text-loki-accent font-black">Authentication Config</p>
                   <div className="grid grid-cols-2 gap-2">
                     <Input label="Client ID / API Key" name="apiKey" placeholder="ID or Key" />
                     <Input label="Client Secret (Optional)" name="clientSecret" placeholder="Secret" />
@@ -284,13 +285,13 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpen
           <div className="flex p-1.5 bg-zinc-900/50 rounded-2xl border border-zinc-800/50 w-fit">
             <button 
               onClick={() => setActiveTab('apis')}
-              className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'apis' ? 'bg-emerald-500 text-zinc-950 shadow-lg shadow-emerald-500/20' : 'text-zinc-500 hover:text-white'}`}
+              className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'apis' ? 'bg-loki-primary text-zinc-950 shadow-lg shadow-loki-primary/20' : 'text-zinc-500 hover:text-white'}`}
             >
               APIs
             </button>
             <button 
               onClick={() => setActiveTab('cli')}
-              className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'cli' ? 'bg-emerald-500 text-zinc-950 shadow-lg shadow-emerald-500/20' : 'text-zinc-500 hover:text-white'}`}
+              className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'cli' ? 'bg-loki-primary text-zinc-950 shadow-lg shadow-loki-primary/20' : 'text-zinc-500 hover:text-white'}`}
             >
               CLI
             </button>
@@ -303,7 +304,7 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpen
               <div className="space-y-1">
                 <h2 className="text-2xl font-black text-white uppercase tracking-tight">Your APIs</h2>
                 <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <div className="w-2 h-2 rounded-full bg-loki-primary animate-pulse" />
                   <span className="text-[10px] uppercase font-black tracking-widest text-zinc-600">
                     {filteredApis.length} Active Connections
                   </span>
@@ -330,9 +331,9 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpen
                       <div className="flex justify-between items-center">
                         <span className="truncate">{api.name}</span>
                         {api.token && (
-                          <div className="flex items-center gap-2 bg-emerald-500/10 px-2 py-1 rounded-lg border border-emerald-500/20">
-                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                            <span className="text-[8px] font-black text-emerald-500 uppercase tracking-widest">Active</span>
+                          <div className="flex items-center gap-2 bg-loki-primary/10 px-2 py-1 rounded-lg border border-loki-primary/20">
+                            <div className="w-1.5 h-1.5 rounded-full bg-loki-primary shadow-[0_0_8px_rgba(0,184,148,0.5)]" />
+                            <span className="text-[8px] font-black text-loki-primary uppercase tracking-widest">Active</span>
                           </div>
                         )}
                       </div>
@@ -344,7 +345,7 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpen
                         <div className="flex gap-4">
                           <button 
                             onClick={(e) => { e.stopPropagation(); setEditingApi(api); }}
-                            className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-black hover:text-emerald-500 transition-colors"
+                            className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-black hover:text-loki-primary transition-colors"
                           >
                             Edit
                           </button>
@@ -355,7 +356,7 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpen
                             Delete
                           </button>
                         </div>
-                        <span className="text-emerald-500 text-[10px] font-black uppercase tracking-widest group-hover:translate-x-1 transition-transform">View Details →</span>
+                        <span className="text-loki-primary text-[10px] font-black uppercase tracking-widest group-hover:translate-x-1 transition-transform">View Details →</span>
                       </div>
                     }
                   >
@@ -392,7 +393,7 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpen
               <Card title="Installation">
                 <div className="space-y-4">
                   <p className="text-xs text-zinc-500">Install the Loki CLI globally using npm:</p>
-                  <div className="bg-black p-4 rounded-xl border border-zinc-800 font-mono text-xs text-emerald-500">
+                  <div className="bg-black p-4 rounded-xl border border-zinc-800 font-mono text-xs text-loki-primary">
                     $ npm install -g loki-cli
                   </div>
                 </div>
@@ -401,7 +402,7 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpen
               <Card title="Quick Start">
                 <div className="space-y-4">
                   <p className="text-xs text-zinc-500">Authenticate your terminal session:</p>
-                  <div className="bg-black p-4 rounded-xl border border-zinc-800 font-mono text-xs text-emerald-500">
+                  <div className="bg-black p-4 rounded-xl border border-zinc-800 font-mono text-xs text-loki-primary">
                     $ loki login --api-key {user?.api_key || 'YOUR_KEY'}
                   </div>
                 </div>
@@ -414,15 +415,15 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpen
                   <p className="text-xs font-bold text-white uppercase tracking-widest">Management</p>
                   <ul className="space-y-3">
                     <li className="flex justify-between items-center text-[11px]">
-                      <code className="text-emerald-400">loki apis</code>
+                      <code className="text-loki-accent">loki apis</code>
                       <span className="text-zinc-600">List all APIs</span>
                     </li>
                     <li className="flex justify-between items-center text-[11px]">
-                      <code className="text-emerald-400">loki endpoints --api-id 1</code>
+                      <code className="text-loki-accent">loki endpoints --api-id 1</code>
                       <span className="text-zinc-600">List endpoints</span>
                     </li>
                     <li className="flex justify-between items-center text-[11px]">
-                      <code className="text-emerald-400">loki deploy --file api.json</code>
+                      <code className="text-loki-accent">loki deploy --file api.json</code>
                       <span className="text-zinc-600">Deploy config</span>
                     </li>
                   </ul>
@@ -431,15 +432,15 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpen
                   <p className="text-xs font-bold text-white uppercase tracking-widest">Execution</p>
                   <ul className="space-y-3">
                     <li className="flex justify-between items-center text-[11px]">
-                      <code className="text-emerald-400">loki call --api-id 1 --endpoint-id 2</code>
+                      <code className="text-loki-accent">loki call --api-id 1 --endpoint-id 2</code>
                       <span className="text-zinc-600">Execute request</span>
                     </li>
                     <li className="flex justify-between items-center text-[11px]">
-                      <code className="text-emerald-400">loki token status --api-id 1</code>
+                      <code className="text-loki-accent">loki token status --api-id 1</code>
                       <span className="text-zinc-600">Check validity</span>
                     </li>
                     <li className="flex justify-between items-center text-[11px]">
-                      <code className="text-emerald-400">loki token refresh --api-id 1</code>
+                      <code className="text-loki-accent">loki token refresh --api-id 1</code>
                       <span className="text-zinc-600">Manual refresh</span>
                     </li>
                   </ul>
@@ -447,13 +448,13 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpen
               </div>
             </Card>
 
-            <div className="bg-emerald-500/5 border border-emerald-500/20 p-6 rounded-2xl">
+            <div className="bg-loki-primary/5 border border-loki-primary/20 p-6 rounded-2xl">
               <div className="flex gap-4 items-start">
                 <span className="text-2xl">💡</span>
                 <div className="space-y-1">
-                  <p className="text-sm font-bold text-emerald-400">Pro Tip</p>
+                  <p className="text-sm font-bold text-loki-accent">Pro Tip</p>
                   <p className="text-xs text-zinc-400 leading-relaxed">
-                    Use the <code className="text-emerald-500">--json</code> flag with any command to get raw data output, perfect for piping into tools like <code className="text-zinc-300">jq</code>.
+                    Use the <code className="text-loki-primary">--json</code> flag with any command to get raw data output, perfect for piping into tools like <code className="text-zinc-300">jq</code>.
                   </p>
                 </div>
               </div>

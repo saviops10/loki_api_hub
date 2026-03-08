@@ -143,9 +143,9 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
   };
 
   return (
-    <div className="min-h-screen bg-[#050505] p-4 sm:p-8">
+    <div className="min-h-screen bg-loki-bg p-4 sm:p-8">
       <div className="max-w-7xl mx-auto space-y-12">
-        <header className="flex justify-between items-center bg-zinc-900/20 p-6 rounded-[2rem] border border-zinc-800/50 backdrop-blur-xl">
+        <header className="flex justify-between items-center bg-zinc-900/20 p-6 rounded-[2rem] border border-white/10 backdrop-blur-xl">
           <div className="flex items-center gap-5">
             <button onClick={onBack} className="w-12 h-12 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-2xl flex items-center justify-center transition-all group">
               <span className="text-xl group-hover:-translate-x-1 transition-transform">←</span>
@@ -162,8 +162,8 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
                 <div className="flex flex-col items-start">
                   <span className="text-[8px] uppercase tracking-[0.2em] font-black text-zinc-600">Token Status</span>
                   <div className="flex items-center gap-2">
-                    <div className={`w-1.5 h-1.5 rounded-full ${api.token ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-red-500 animate-pulse'}`} />
-                    <span className={`text-[10px] font-black uppercase ${api.token ? 'text-emerald-500' : 'text-red-500'}`}>
+                    <div className={`w-1.5 h-1.5 rounded-full ${api.token ? 'bg-loki-primary shadow-[0_0_8px_rgba(0,184,148,0.5)]' : 'bg-red-500 animate-pulse'}`} />
+                    <span className={`text-[10px] font-black uppercase ${api.token ? 'text-loki-primary' : 'text-red-500'}`}>
                       {api.token ? 'Active' : 'Missing'}
                     </span>
                   </div>
@@ -178,7 +178,7 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
                 <button 
                   onClick={handleRefreshToken}
                   disabled={isRefreshingToken}
-                  className="p-2 hover:bg-zinc-800 rounded-xl text-emerald-500 transition-all disabled:opacity-50"
+                  className="p-2 hover:bg-zinc-800 rounded-xl text-loki-primary transition-all disabled:opacity-50"
                   title="Refresh Token"
                 >
                   {isRefreshingToken ? '⌛' : '🔄'}
@@ -187,7 +187,7 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
             )}
             <div className="hidden lg:flex flex-col items-end gap-1 mr-4">
               <span className="text-[9px] uppercase tracking-[0.2em] font-black text-zinc-600">Authentication</span>
-              <span className="bg-emerald-500/10 text-emerald-400 px-3 py-1 rounded-full border border-emerald-500/20 text-[10px] font-black uppercase">
+              <span className="bg-loki-primary/10 text-loki-accent px-3 py-1 rounded-full border border-loki-primary/20 text-[10px] font-black uppercase">
                 {api.auth_type}
               </span>
             </div>
@@ -209,7 +209,7 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
                   <option value="DELETE">DELETE</option>
                 </Input>
                 <label className="flex items-center gap-3 p-3 bg-zinc-900/50 rounded-xl border border-zinc-800 cursor-pointer hover:border-zinc-700 transition-all">
-                  <input name="isFavorite" type="checkbox" className="w-4 h-4 accent-emerald-500 rounded border-zinc-700 bg-zinc-800" />
+                  <input name="isFavorite" type="checkbox" className="w-4 h-4 accent-loki-primary rounded border-zinc-700 bg-zinc-800" />
                   <span className="text-sm text-zinc-400 font-medium">Mark as Favorite</span>
                 </label>
                 <Button type="submit" className="w-full" isLoading={loading}>Create Endpoint</Button>
@@ -253,7 +253,7 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
                             <div className="flex items-center gap-5">
                               <span className={`text-[10px] font-black px-3 py-1.5 rounded-lg w-20 text-center tracking-widest ${
                                 ep.method === 'GET' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' :
-                                ep.method === 'POST' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                                ep.method === 'POST' ? 'bg-loki-primary/10 text-loki-accent border border-loki-primary/20' :
                                 'bg-zinc-800 text-zinc-400 border border-zinc-700'
                               }`}>{ep.method}</span>
                               <div>
@@ -267,7 +267,7 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
                             <div className="flex items-center gap-3">
                               <button 
                                 onClick={() => handleDuplicateEndpoint(ep.id)}
-                                className="text-zinc-600 hover:text-emerald-500 text-[10px] font-black transition-colors uppercase tracking-widest"
+                                className="text-zinc-600 hover:text-loki-primary text-[10px] font-black transition-colors uppercase tracking-widest"
                                 title="Duplicate"
                               >
                                 📋
@@ -279,7 +279,7 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
                                 }}
                                 variant="secondary"
                                 size="sm"
-                                className="border-gold-500/30 hover:border-gold-500/50"
+                                className="border-loki-accent/30 hover:border-loki-accent/50"
                               >
                                 OPEN
                               </Button>
@@ -314,7 +314,7 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setSelectedEndpoint(null)} />
           
-          <div className="relative w-full max-w-4xl bg-zinc-950 border-2 border-gold-500/20 rounded-[2.5rem] shadow-2xl shadow-gold-500/5 overflow-hidden animate-in zoom-in-95 duration-300">
+          <div className="relative w-full max-w-4xl bg-zinc-950 border-2 border-loki-accent/20 rounded-[2.5rem] shadow-2xl shadow-loki-accent/5 overflow-hidden animate-in zoom-in-95 duration-300">
             <div className="flex flex-col h-[85vh] max-h-[800px]">
               {/* Modal Header */}
               <div className="p-8 border-b border-zinc-800/50 bg-zinc-900/20">
@@ -323,7 +323,7 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
                     <div className="flex items-center gap-3">
                       <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border ${
                         selectedEndpoint.method === 'GET' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
-                        selectedEndpoint.method === 'POST' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                        selectedEndpoint.method === 'POST' ? 'bg-loki-primary/10 text-loki-accent border border-loki-primary/20' :
                         'bg-zinc-800 text-zinc-400 border-zinc-700'
                       }`}>
                         {selectedEndpoint.method}
@@ -350,10 +350,10 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
                         setActiveEndpointTab(tab as any);
                         if (tab === 'logs') fetchLogs(selectedEndpoint.id);
                       }}
-                      className={`pb-4 text-xs font-black uppercase tracking-[0.2em] transition-all relative ${activeEndpointTab === tab ? 'text-emerald-400' : 'text-zinc-600 hover:text-zinc-400'}`}
+                      className={`pb-4 text-xs font-black uppercase tracking-[0.2em] transition-all relative ${activeEndpointTab === tab ? 'text-loki-accent' : 'text-zinc-600 hover:text-zinc-400'}`}
                     >
                       {tab}
-                      {activeEndpointTab === tab && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]" />}
+                      {activeEndpointTab === tab && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-loki-accent shadow-[0_0_8px_rgba(0,245,200,0.5)]" />}
                     </button>
                   ))}
                 </div>
@@ -375,7 +375,7 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
                           ...prev,
                           [selectedEndpoint.id]: [...(prev[selectedEndpoint.id] || []), { key: '', value: '' }]
                         }))}
-                        className="px-4 py-2 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                        className="px-4 py-2 bg-loki-primary/10 text-loki-primary hover:bg-loki-primary/20 border border-loki-primary/20 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
                       >
                         + Add Param
                       </button>
@@ -392,7 +392,7 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
                               newParams[idx] = { ...newParams[idx], key: e.target.value };
                               setEndpointParams(prev => ({ ...prev, [selectedEndpoint.id]: newParams }));
                             }}
-                            className="flex-1 bg-zinc-900/50 border-2 border-zinc-800/50 rounded-2xl px-5 py-3 text-sm text-white outline-none focus:border-emerald-500/30 transition-all"
+                            className="flex-1 bg-zinc-900/50 border-2 border-zinc-800/50 rounded-2xl px-5 py-3 text-sm text-white outline-none focus:border-loki-primary/30 transition-all"
                           />
                           <input 
                             placeholder="Value"
@@ -402,7 +402,7 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
                               newParams[idx] = { ...newParams[idx], value: e.target.value };
                               setEndpointParams(prev => ({ ...prev, [selectedEndpoint.id]: newParams }));
                             }}
-                            className="flex-1 bg-zinc-900/50 border-2 border-zinc-800/50 rounded-2xl px-5 py-3 text-sm text-white outline-none focus:border-emerald-500/30 transition-all"
+                            className="flex-1 bg-zinc-900/50 border-2 border-zinc-800/50 rounded-2xl px-5 py-3 text-sm text-white outline-none focus:border-loki-primary/30 transition-all"
                           />
                           <button 
                             onClick={() => {
@@ -432,7 +432,7 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
                         <div className="flex items-center gap-4">
                           <span className={`px-3 py-1 rounded-lg text-[10px] font-black border ${
                             testResults[selectedEndpoint.id].status >= 200 && testResults[selectedEndpoint.id].status < 300
-                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                              ? 'bg-loki-primary/10 text-loki-primary border-loki-primary/20'
                               : 'bg-red-500/10 text-red-400 border-red-500/20'
                           }`}>
                             STATUS: {testResults[selectedEndpoint.id].status}
@@ -441,7 +441,7 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
                             {formatDate(testResults[selectedEndpoint.id].timestamp)}
                           </span>
                         </div>
-                        <pre className="bg-black/40 p-6 rounded-[2rem] border-2 border-zinc-800/50 text-[11px] font-mono text-emerald-400 overflow-x-auto leading-relaxed">
+                        <pre className="bg-black/40 p-6 rounded-[2rem] border-2 border-zinc-800/50 text-[11px] font-mono text-loki-primary overflow-x-auto leading-relaxed">
                           {JSON.stringify(testResults[selectedEndpoint.id].data, null, 2)}
                         </pre>
                       </div>
@@ -462,7 +462,7 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
                           navigator.clipboard.writeText(generateCurl(api, selectedEndpoint, endpointParams[selectedEndpoint.id] || []));
                           showToast('cURL copied to clipboard!', 'success');
                         }}
-                        className="text-[10px] text-emerald-500 hover:text-emerald-400 font-black uppercase tracking-widest"
+                        className="text-[10px] text-loki-primary hover:text-loki-accent font-black uppercase tracking-widest"
                       >
                         Copy Command
                       </button>
@@ -488,7 +488,7 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
                       {(endpointLogs[selectedEndpoint.id] || []).map((log: any) => (
                         <div key={log.id} className="p-5 bg-zinc-900/30 border border-zinc-800/50 rounded-2xl flex justify-between items-center hover:bg-zinc-900/50 transition-all">
                           <div className="flex items-center gap-4">
-                            <span className={`w-2 h-2 rounded-full ${log.status >= 200 && log.status < 300 ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                            <span className={`w-2 h-2 rounded-full ${log.status >= 200 && log.status < 300 ? 'bg-loki-primary' : 'bg-red-500'}`} />
                             <div>
                               <p className="text-xs font-black text-white uppercase tracking-widest">Status {log.status}</p>
                               <p className="text-[10px] text-zinc-600 font-bold">{formatDate(log.timestamp)}</p>
@@ -496,7 +496,7 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
                           </div>
                           <button 
                             onClick={() => setTestResults(prev => ({ ...prev, [selectedEndpoint.id]: { status: log.status, data: JSON.parse(log.response_body), timestamp: new Date(log.timestamp) } }))}
-                            className="text-[10px] text-emerald-500 hover:text-emerald-400 font-black uppercase tracking-widest"
+                            className="text-[10px] text-loki-primary hover:text-loki-accent font-black uppercase tracking-widest"
                           >
                             View
                           </button>
@@ -524,7 +524,7 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
                 <Button 
                   onClick={() => handleTest(selectedEndpoint)}
                   isLoading={loading}
-                  className="px-12 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 shadow-emerald-500/20"
+                  className="px-12 bg-loki-primary hover:bg-loki-accent text-zinc-950 shadow-loki-primary/20"
                 >
                   EXECUTE REQUEST
                 </Button>

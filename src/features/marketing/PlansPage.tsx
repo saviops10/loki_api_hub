@@ -33,14 +33,14 @@ export const PlansPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   ];
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white p-6 md:p-12">
+    <div className="min-h-screen bg-loki-bg text-white p-6 md:p-12">
       <div className="max-w-6xl mx-auto space-y-12">
-        <button onClick={onBack} className="text-zinc-500 hover:text-emerald-500 font-bold uppercase tracking-widest text-xs flex items-center gap-2">
+        <button onClick={onBack} className="text-zinc-500 hover:text-loki-primary font-bold uppercase tracking-widest text-xs flex items-center gap-2">
           ← Back to Home
         </button>
 
         <div className="text-center space-y-4">
-          <h1 className="text-5xl font-black tracking-tighter">CHOOSE YOUR <span className="text-emerald-500">POWER</span></h1>
+          <h1 className="text-5xl font-black tracking-tighter">CHOOSE YOUR <span className="text-loki-primary">POWER</span></h1>
           <p className="text-zinc-500 max-w-xl mx-auto">Scale your API management as your business grows. No hidden fees, just precision.</p>
         </div>
 
@@ -50,7 +50,7 @@ export const PlansPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
               <motion.div 
                 key={plan.id}
                 whileHover={{ y: -10 }}
-                className={`bg-zinc-900/50 border ${plan.highlight ? 'border-emerald-500 shadow-2xl shadow-emerald-500/10' : 'border-zinc-800'} rounded-[2.5rem] p-8 flex flex-col`}
+                className={`bg-zinc-900/50 border ${plan.highlight ? 'border-loki-primary shadow-2xl shadow-loki-primary/10' : 'border-white/10'} rounded-[2.5rem] p-8 flex flex-col`}
               >
                 <div className="mb-8">
                   <h3 className="text-xl font-black uppercase tracking-tight mb-2">{plan.name}</h3>
@@ -63,14 +63,13 @@ export const PlansPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 <ul className="flex-1 space-y-4 mb-8">
                   {plan.features.map((f, i) => (
                     <li key={i} className="flex items-center gap-3 text-sm text-zinc-400">
-                      <span className="text-emerald-500">✓</span> {f}
+                      <span className="text-loki-primary">✓</span> {f}
                     </li>
                   ))}
                 </ul>
 
                 <Button 
                   variant={plan.highlight ? 'primary' : 'secondary'} 
-                  className={plan.highlight ? 'bg-emerald-500 text-zinc-950' : ''}
                   onClick={() => plan.id !== 'free' && setSelectedPlan(plan.id)}
                 >
                   {plan.buttonText}
@@ -93,7 +92,7 @@ export const PlansPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                   <Input label="CVC" placeholder="000" required />
                 </div>
                 <div className="pt-4 space-y-3">
-                  <Button type="submit" className="w-full bg-emerald-500 text-zinc-950">Confirm & Pay</Button>
+                  <Button type="submit" className="w-full">Confirm & Pay</Button>
                   <Button variant="ghost" onClick={() => setSelectedPlan(null)} className="w-full">Cancel</Button>
                 </div>
               </form>

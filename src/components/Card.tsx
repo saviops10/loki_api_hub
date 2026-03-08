@@ -13,7 +13,7 @@ export const Card: React.FC<CardProps> = ({ children, title, subtitle, className
   return (
     <div 
       onClick={onClick}
-      className={`bg-zinc-900/30 border border-zinc-800/50 rounded-[2rem] overflow-hidden transition-all backdrop-blur-sm ${onClick ? 'cursor-pointer hover:border-emerald-500/30 hover:bg-zinc-900/50' : ''} ${className}`}
+      className={`bg-zinc-900/30 border border-zinc-800/50 rounded-[2rem] overflow-hidden transition-all backdrop-blur-sm ${onClick ? 'cursor-pointer hover:border-loki-primary/30 hover:bg-zinc-900/50' : ''} ${className}`}
     >
       {(title || subtitle) && (
         <div className="px-8 py-6 border-b border-zinc-800/30">

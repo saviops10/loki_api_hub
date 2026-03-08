@@ -30,7 +30,7 @@ export const ToastContainer: React.FC<{ toasts: Toast[] }> = ({ toasts }) => {
         <div 
           key={toast.id}
           className={`px-4 py-3 rounded-xl shadow-2xl border flex items-center gap-3 animate-in slide-in-from-right-full duration-300 ${
-            toast.type === 'success' ? 'bg-emerald-950 border-emerald-500/50 text-emerald-200' :
+            toast.type === 'success' ? 'bg-loki-primary/10 border-loki-primary/50 text-loki-primary' :
             toast.type === 'error' ? 'bg-red-950 border-red-500/50 text-red-200' :
             'bg-zinc-900 border-zinc-700 text-zinc-200'
           }`}

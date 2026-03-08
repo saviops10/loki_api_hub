@@ -41,9 +41,9 @@ export const AdminPanel: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   };
 
   return (
-    <div className="min-h-screen bg-[#050505] flex flex-col">
+    <div className="min-h-screen bg-loki-bg flex flex-col">
       {/* Header */}
-      <header className="bg-zinc-900/50 border-b border-zinc-800 p-4 sm:px-8 flex justify-between items-center backdrop-blur-xl sticky top-0 z-50">
+      <header className="bg-zinc-900/50 border-b border-white/10 p-4 sm:px-8 flex justify-between items-center backdrop-blur-xl sticky top-0 z-50">
         <div className="flex items-center gap-4">
           <button 
             onClick={onBack}
@@ -53,7 +53,7 @@ export const AdminPanel: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           </button>
           <div>
             <h1 className="text-xl font-black text-white tracking-tighter flex items-center gap-2">
-              <span className="text-emerald-500">LOKI</span> ADMIN
+              <span className="text-loki-primary">LOKI</span> ADMIN
             </h1>
             <p className="text-[10px] uppercase tracking-[0.2em] font-black text-zinc-500">System Management</p>
           </div>
@@ -67,19 +67,19 @@ export const AdminPanel: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           <p className="text-[10px] uppercase tracking-widest font-black text-zinc-600 mb-4 px-2">Resources</p>
           <button 
             onClick={() => setActiveTab('users')}
-            className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-3 ${activeTab === 'users' ? 'bg-emerald-500 text-zinc-950' : 'text-zinc-400 hover:bg-zinc-800'}`}
+            className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-3 ${activeTab === 'users' ? 'bg-loki-primary text-zinc-950' : 'text-zinc-400 hover:bg-zinc-800'}`}
           >
             <span>👥</span> Users
           </button>
           <button 
             onClick={() => setActiveTab('apis')}
-            className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-3 ${activeTab === 'apis' ? 'bg-emerald-500 text-zinc-950' : 'text-zinc-400 hover:bg-zinc-800'}`}
+            className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-3 ${activeTab === 'apis' ? 'bg-loki-primary text-zinc-950' : 'text-zinc-400 hover:bg-zinc-800'}`}
           >
             <span>🔌</span> APIs
           </button>
           <button 
             onClick={() => setActiveTab('system')}
-            className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-3 ${activeTab === 'system' ? 'bg-emerald-500 text-zinc-950' : 'text-zinc-400 hover:bg-zinc-800'}`}
+            className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-3 ${activeTab === 'system' ? 'bg-loki-primary text-zinc-950' : 'text-zinc-400 hover:bg-zinc-800'}`}
           >
             <span>⚡</span> System Status
           </button>
@@ -129,10 +129,10 @@ export const AdminPanel: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                                 </div>
                               </div>
                             </td>
-                            <td className="px-6 py-4 text-sm text-zinc-400">{u.email}</td>
+                             <td className="px-6 py-4 text-sm text-zinc-400">{u.email}</td>
                             <td className="px-6 py-4">
                               {u.is_admin === 1 ? (
-                                <span className="bg-emerald-500/10 text-emerald-500 text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-md border border-emerald-500/20">Admin</span>
+                                <span className="bg-loki-primary/10 text-loki-primary text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-md border border-loki-primary/20">Admin</span>
                               ) : (
                                 <span className="bg-zinc-800 text-zinc-500 text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-md border border-zinc-700">User</span>
                               )}
@@ -140,7 +140,7 @@ export const AdminPanel: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                             <td className="px-6 py-4">
                               <button 
                                 onClick={() => toggleAdmin(u.id, u.is_admin)}
-                                className="text-[10px] font-black uppercase tracking-widest text-emerald-500 hover:text-emerald-400 transition-colors"
+                                className="text-[10px] font-black uppercase tracking-widest text-loki-primary hover:text-loki-accent transition-colors"
                               >
                                 {u.is_admin === 1 ? 'Demote' : 'Make Admin'}
                               </button>
@@ -180,10 +180,10 @@ export const AdminPanel: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                       <div className="space-y-4">
                         <div className="flex items-center justify-between">
                           <span className="text-zinc-500 text-sm">Status</span>
-                          <span className="text-emerald-500 text-xs font-black uppercase tracking-widest">Connected</span>
+                          <span className="text-loki-primary text-xs font-black uppercase tracking-widest">Connected</span>
                         </div>
                         <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                          <div className="h-full bg-emerald-500 w-[85%]" />
+                          <div className="h-full bg-loki-primary w-[85%]" />
                         </div>
                         <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest">Storage: 12.4 MB / 100 MB</p>
                       </div>
@@ -192,10 +192,10 @@ export const AdminPanel: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                       <div className="space-y-4">
                         <div className="flex items-center justify-between">
                           <span className="text-zinc-500 text-sm">Status</span>
-                          <span className="text-emerald-500 text-xs font-black uppercase tracking-widest">Active</span>
+                          <span className="text-loki-primary text-xs font-black uppercase tracking-widest">Active</span>
                         </div>
                         <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                          <div className="h-full bg-emerald-500 w-[40%]" />
+                          <div className="h-full bg-loki-primary w-[40%]" />
                         </div>
                         <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest">Keys: 1,240 Active</p>
                       </div>
@@ -204,10 +204,10 @@ export const AdminPanel: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                       <div className="space-y-4">
                         <div className="flex items-center justify-between">
                           <span className="text-zinc-500 text-sm">Status</span>
-                          <span className="text-emerald-500 text-xs font-black uppercase tracking-widest">Ready</span>
+                          <span className="text-loki-primary text-xs font-black uppercase tracking-widest">Ready</span>
                         </div>
                         <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                          <div className="h-full bg-emerald-500 w-[15%]" />
+                          <div className="h-full bg-loki-primary w-[15%]" />
                         </div>
                         <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest">Buckets: 3 Total</p>
                       </div>

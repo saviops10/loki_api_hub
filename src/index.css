@@ -16,11 +16,17 @@
   --color-gold-800: #704d1f;
   --color-gold-900: #60421f;
   --color-gold-950: #37230f;
+
+  --color-loki-bg: #050816;
+  --color-loki-primary: #00b894;
+  --color-loki-accent: #00f5c8;
 }
 
 @layer base {
   body {
-    @apply bg-[#050505] text-zinc-100 antialiased selection:bg-emerald-500/30 selection:text-emerald-200;
+    @apply bg-loki-bg text-zinc-100 antialiased selection:bg-loki-primary/30 selection:text-loki-accent;
+    background-image: radial-gradient(circle at top, #151a3b 0, #050816 55%);
+    background-attachment: fixed;
   }
 }
 

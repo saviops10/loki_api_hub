@@ -9,7 +9,7 @@ export const LoadingSpinner: React.FC<{ size?: 'sm' | 'md' | 'lg', label?: strin
 
   return (
     <div className="flex flex-col items-center justify-center gap-3 p-8">
-      <div className={`${sizes[size]} border-zinc-800 border-t-emerald-500 rounded-full animate-spin`} />
+      <div className={`${sizes[size]} border-zinc-800 border-t-loki-primary rounded-full animate-spin`} />
       {label && <p className="text-sm text-zinc-500 font-medium animate-pulse">{label}</p>}
     </div>
   );

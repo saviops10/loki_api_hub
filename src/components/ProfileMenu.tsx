@@ -76,10 +76,10 @@ export const ProfileMenu: React.FC<{ onOpenAdmin?: () => void }> = ({ onOpenAdmi
         className="flex items-center gap-3 p-1.5 pl-4 bg-zinc-900/50 hover:bg-zinc-800/80 border border-zinc-800 rounded-full transition-all group"
       >
         <div className="text-right hidden sm:block">
-          <p className="text-xs font-bold text-white group-hover:text-emerald-400 transition-colors">{user.username}</p>
+          <p className="text-xs font-bold text-white group-hover:text-loki-primary transition-colors">{user.username}</p>
           <p className="text-[10px] text-zinc-500">Account Settings</p>
         </div>
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center text-zinc-950 font-black text-xs shadow-lg shadow-emerald-500/10">
+        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-loki-primary to-loki-accent flex items-center justify-center text-zinc-950 font-black text-xs shadow-lg shadow-loki-primary/10">
           {user.username.slice(0, 2).toUpperCase()}
         </div>
       </button>
@@ -90,7 +90,7 @@ export const ProfileMenu: React.FC<{ onOpenAdmin?: () => void }> = ({ onOpenAdmi
           <div className="absolute right-0 mt-3 w-80 bg-zinc-900 border border-zinc-800 rounded-3xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="p-6 bg-gradient-to-br from-zinc-800/50 to-transparent border-b border-zinc-800">
               <div className="flex items-center gap-4 mb-4">
-                <div className="w-12 h-12 rounded-2xl bg-emerald-500 flex items-center justify-center text-zinc-950 font-black text-xl">
+                <div className="w-12 h-12 rounded-2xl bg-loki-primary flex items-center justify-center text-zinc-950 font-black text-xl">
                   {user.username.slice(0, 1).toUpperCase()}
                 </div>
                 <div>
@@ -104,13 +104,13 @@ export const ProfileMenu: React.FC<{ onOpenAdmin?: () => void }> = ({ onOpenAdmi
                   <span className="text-[10px] uppercase tracking-widest font-black text-zinc-500">Your API Key</span>
                   <button 
                     onClick={() => setShowApiKey(!showApiKey)}
-                    className="text-[10px] text-emerald-500 hover:text-emerald-400 font-bold"
+                    className="text-[10px] text-loki-primary hover:text-loki-accent font-bold"
                   >
                     {showApiKey ? 'HIDE' : 'SHOW'}
                   </button>
                 </div>
                 <div className="flex items-center gap-2">
-                  <code className="text-[11px] font-mono text-emerald-400 flex-1 truncate">
+                  <code className="text-[11px] font-mono text-loki-accent flex-1 truncate">
                     {showApiKey ? user.api_key : '••••••••••••••••'}
                   </code>
                   <button 
@@ -132,7 +132,7 @@ export const ProfileMenu: React.FC<{ onOpenAdmin?: () => void }> = ({ onOpenAdmi
                   {user.is_admin === 1 && onOpenAdmin && (
                     <button 
                       onClick={() => { onOpenAdmin(); setIsOpen(false); }}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 rounded-2xl transition-all"
+                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-loki-primary hover:text-loki-accent hover:bg-loki-primary/10 rounded-2xl transition-all"
                     >
                       <span className="text-lg">🛡️</span>
                       <span className="font-black uppercase tracking-widest text-xs">Admin Panel</span>
