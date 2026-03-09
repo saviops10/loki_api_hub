@@ -11,11 +11,12 @@ import { ConfirmModal } from '../../components/Modal';
 import { ProfileMenu } from '../../components/ProfileMenu';
 import { LokiIcon } from '../../components/Branding';
 
-const ApiKeyManager: React.FC = () => {
+const ApiKeyManager: React.FC<{ user: any, onRegenerateKey: () => void }> = ({ user, onRegenerateKey }) => {
   const { call, loading } = useApi();
   const { showToast } = useApp();
   const [keys, setKeys] = useState<any[]>([]);
   const [newKeyName, setNewKeyName] = useState('');
+  const [showPrimary, setShowPrimary] = useState(false);
 
   const fetchKeys = async () => {
     const data = await call('/api/auth/keys');
@@ -50,68 +51,113 @@ const ApiKeyManager: React.FC = () => {
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <div className="lg:col-span-4 space-y-6">
-          <Card title="Create New Key">
-            <form onSubmit={handleCreateKey} className="space-y-4">
-              <Input 
-                label="Key Name" 
-                placeholder="e.g. Production, CLI, Mobile" 
-                value={newKeyName}
-                onChange={(e) => setNewKeyName(e.target.value)}
-                required 
-              />
-              <Button type="submit" className="w-full" isLoading={loading}>Generate Key</Button>
-              <p className="text-[10px] text-zinc-500 italic text-center">
-                Plan limits apply. Free: 1 key, Business: 3 keys.
-              </p>
-            </form>
-          </Card>
-        </div>
-
-        <div className="lg:col-span-8 space-y-6">
+        <div className="lg:col-span-12 space-y-8">
           <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-black text-white uppercase tracking-tight">Your API Keys</h2>
-            <span className="text-[10px] uppercase font-black tracking-widest text-zinc-600">
-              {keys.length} Active Keys
-            </span>
+            <h2 className="text-3xl font-black text-white uppercase tracking-tight">API Key Management</h2>
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-loki-primary animate-pulse" />
+              <span className="text-[10px] uppercase font-black tracking-widest text-zinc-600">
+                {keys.length + 1} Total Keys
+              </span>
+            </div>
           </div>
 
-          <div className="grid gap-4">
-            {keys.map(k => (
-              <div key={k.id} className="bg-zinc-900/50 p-6 rounded-[2rem] border border-zinc-800 flex justify-between items-center group">
-                <div className="space-y-1">
-                  <h4 className="text-sm font-black text-white uppercase tracking-widest">{k.name}</h4>
-                  <div className="flex items-center gap-2">
-                    <code className="text-xs font-mono text-loki-primary">
-                      {k.key.substring(0, 8)}••••••••••••••••
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <Card title="Primary API Key" subtitle="Your main account key used for CLI and API access">
+              <div className="space-y-6">
+                <div className="bg-black/40 p-6 rounded-2xl border border-loki-primary/20 space-y-4">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] uppercase tracking-widest font-black text-zinc-500">Key Value</span>
+                    <button 
+                      onClick={() => setShowPrimary(!showPrimary)}
+                      className="text-[10px] text-loki-primary hover:text-loki-accent font-bold uppercase tracking-widest"
+                    >
+                      {showPrimary ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <code className="text-sm font-mono text-loki-primary flex-1 truncate bg-zinc-950 px-3 py-2 rounded-lg border border-zinc-800">
+                      {showPrimary ? user.api_key : '••••••••••••••••••••••••••••••••'}
                     </code>
                     <button 
                       onClick={() => {
-                        navigator.clipboard.writeText(k.key);
-                        showToast('Full key copied to clipboard', 'success');
+                        navigator.clipboard.writeText(user.api_key);
+                        showToast('Primary key copied to clipboard', 'success');
                       }}
-                      className="p-1.5 hover:bg-zinc-800 rounded-lg text-zinc-500 hover:text-white transition-colors"
+                      className="p-2 hover:bg-zinc-800 rounded-xl text-zinc-500 hover:text-white transition-colors border border-zinc-800"
                     >
                       📋
                     </button>
                   </div>
-                  <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest">
-                    Created: {new Date(k.created_at).toLocaleDateString()}
+                </div>
+                
+                <div className="flex flex-col gap-3">
+                  <Button variant="secondary" onClick={onRegenerateKey} isLoading={loading} className="w-full">
+                    🔄 Regenerate Primary Key
+                  </Button>
+                  <p className="text-[10px] text-zinc-500 italic text-center">
+                    Warning: Regenerating will invalidate your current CLI sessions.
                   </p>
                 </div>
-                <button 
-                  onClick={() => handleDeleteKey(k.id)}
-                  className="text-[10px] uppercase tracking-widest font-black text-zinc-600 hover:text-red-500 transition-colors"
-                >
-                  Revoke
-                </button>
               </div>
-            ))}
-            {keys.length === 0 && !loading && (
-              <div className="text-center py-20 bg-zinc-900/20 border-2 border-dashed border-zinc-800/50 rounded-[2rem]">
-                <p className="text-xs text-zinc-600 font-black uppercase tracking-[0.2em]">No API keys found</p>
-              </div>
-            )}
+            </Card>
+
+            <Card title="Create New Key" subtitle="Generate additional keys for specific environments">
+              <form onSubmit={handleCreateKey} className="space-y-4">
+                <Input 
+                  label="Key Name" 
+                  placeholder="e.g. Production, CLI, Mobile" 
+                  value={newKeyName}
+                  onChange={(e) => setNewKeyName(e.target.value)}
+                  required 
+                />
+                <Button type="submit" className="w-full" isLoading={loading}>Generate Additional Key</Button>
+                <p className="text-[10px] text-zinc-500 italic text-center">
+                  Plan limits apply. Free: 1 key, Business: 3 keys.
+                </p>
+              </form>
+            </Card>
+          </div>
+
+          <div className="space-y-6">
+            <h3 className="text-xl font-black text-white uppercase tracking-tight">Additional API Keys</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {keys.map(k => (
+                <div key={k.id} className="bg-zinc-900/50 p-6 rounded-[2rem] border border-zinc-800 flex justify-between items-center group hover:border-loki-primary/30 transition-all">
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-black text-white uppercase tracking-widest">{k.name}</h4>
+                    <div className="flex items-center gap-2">
+                      <code className="text-xs font-mono text-loki-accent bg-black/50 px-2 py-1 rounded border border-zinc-800">
+                        {k.key.substring(0, 8)}••••••••••••••••
+                      </code>
+                      <button 
+                        onClick={() => {
+                          navigator.clipboard.writeText(k.key);
+                          showToast('Key copied to clipboard', 'success');
+                        }}
+                        className="p-1.5 hover:bg-zinc-800 rounded-lg text-zinc-500 hover:text-white transition-colors"
+                      >
+                        📋
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest">
+                      Created: {new Date(k.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <button 
+                    onClick={() => handleDeleteKey(k.id)}
+                    className="p-3 rounded-xl hover:bg-red-500/10 text-[10px] uppercase tracking-widest font-black text-zinc-600 hover:text-red-500 transition-all border border-transparent hover:border-red-500/20"
+                  >
+                    Revoke
+                  </button>
+                </div>
+              ))}
+              {keys.length === 0 && (
+                <div className="col-span-full text-center py-12 bg-zinc-900/20 border-2 border-dashed border-zinc-800/50 rounded-[2rem]">
+                  <p className="text-xs text-zinc-600 font-black uppercase tracking-[0.2em]">No additional keys found</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -209,7 +255,7 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpen
   return (
     <div className="min-h-screen bg-loki-bg p-4 sm:p-8">
       <div className="max-w-7xl mx-auto space-y-12">
-        <header className="flex justify-between items-center bg-zinc-900/20 p-6 rounded-[2rem] border border-white/10 backdrop-blur-xl">
+        <header className="flex justify-between items-center bg-zinc-900/20 p-6 rounded-[2rem] border border-white/10 backdrop-blur-xl relative z-[100]">
           <div className="flex items-center gap-5">
             <div className="w-14 h-14 bg-loki-primary/10 border-2 border-loki-primary/20 rounded-2xl flex items-center justify-center relative overflow-hidden group">
               <LokiIcon className="w-10 h-10 relative z-10 group-hover:scale-110 transition-transform duration-500" />
@@ -250,7 +296,7 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpen
                 
                 <div className="p-4 bg-zinc-950/50 rounded-2xl border border-loki-accent/20 space-y-4 shadow-lg shadow-loki-accent/5">
                   <p className="text-[10px] uppercase tracking-widest text-loki-accent font-black">Authentication Config</p>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-4">
                     <Input label="Client ID / API Key" name="apiKey" placeholder="ID or Key" />
                     <Input label="Client Secret (Optional)" name="clientSecret" placeholder="Secret" />
                   </div>
@@ -461,7 +507,7 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpen
             </div>
           </div>
         ) : (
-          <ApiKeyManager />
+          <ApiKeyManager user={user} onRegenerateKey={handleRegenerateKey} />
         )}
       </main>
         </div>

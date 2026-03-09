@@ -14,7 +14,7 @@ export const Button: React.FC<ButtonProps> = ({
   className = '', 
   ...props 
 }) => {
-  const baseStyles = 'flex items-center justify-center gap-2 px-6 py-3 rounded-2xl font-bold transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none text-sm tracking-tight';
+  const baseStyles = 'flex items-center justify-center gap-2 px-6 py-3 rounded-2xl font-bold transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none text-base tracking-tight';
   
   const variants = {
     primary: 'bg-loki-primary hover:bg-loki-accent text-zinc-950 shadow-xl shadow-loki-primary/10 border border-loki-primary/20',

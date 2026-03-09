@@ -41,14 +41,6 @@ export const ProfileMenu: React.FC<{ onOpenAdmin?: () => void }> = ({ onOpenAdmi
     }
   };
 
-  const handleRegenerateKey = async () => {
-    const result = await call('/api/auth/regenerate-key', { method: 'POST' });
-    if (result && result.api_key) {
-      setUser({ ...user!, api_key: result.api_key });
-      showToast('API Key regenerated!', 'success');
-    }
-  };
-
   const handleUpdateProfile = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -86,8 +78,8 @@ export const ProfileMenu: React.FC<{ onOpenAdmin?: () => void }> = ({ onOpenAdmi
 
       {isOpen && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-          <div className="absolute right-0 mt-3 w-80 bg-zinc-900 border border-zinc-800 rounded-3xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="fixed inset-0 z-[105]" onClick={() => setIsOpen(false)} />
+          <div className="absolute right-0 mt-3 w-80 bg-zinc-900 border border-zinc-800 rounded-3xl shadow-2xl z-[110] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="p-6 bg-gradient-to-br from-zinc-800/50 to-transparent border-b border-zinc-800">
               <div className="flex items-center gap-4 mb-4">
                 <div className="w-12 h-12 rounded-2xl bg-loki-primary flex items-center justify-center text-zinc-950 font-black text-xl">
@@ -151,13 +143,6 @@ export const ProfileMenu: React.FC<{ onOpenAdmin?: () => void }> = ({ onOpenAdmi
                   >
                     <span className="text-lg">🔐</span>
                     <span className="font-medium">Change Password</span>
-                  </button>
-                  <button 
-                    onClick={handleRegenerateKey}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-400 hover:text-white hover:bg-zinc-800/50 rounded-2xl transition-all"
-                  >
-                    <span className="text-lg">🔄</span>
-                    <span className="font-medium">Regenerate API Key</span>
                   </button>
                   <div className="h-px bg-zinc-800 my-2 mx-4" />
                   <button 
