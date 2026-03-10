@@ -10,6 +10,7 @@ import { LoadingSpinner, EmptyState } from '../../components/Feedback';
 import { ConfirmModal } from '../../components/Modal';
 import { ProfileMenu } from '../../components/ProfileMenu';
 import { LokiIcon } from '../../components/Branding';
+import { Terminal, Shield, Zap } from 'lucide-react';
 
 const ApiKeyManager: React.FC<{ user: any, onRegenerateKey: () => void }> = ({ user, onRegenerateKey }) => {
   const { call, loading } = useApi();
@@ -427,81 +428,82 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpen
             )}
           </>
         ) : activeTab === 'cli' ? (
-          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="space-y-4">
-              <h2 className="text-2xl font-black text-white uppercase tracking-tight">Loki CLI</h2>
-              <p className="text-zinc-400 max-w-2xl">
-                A professional command-line interface for advanced users. Manage your APIs, execute requests, and control tokens directly from your terminal.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Card title="Installation">
+          <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+              <div className="space-y-8">
                 <div className="space-y-4">
-                  <p className="text-xs text-zinc-500">Install the Loki CLI globally using npm:</p>
-                  <div className="bg-black p-4 rounded-xl border border-zinc-800 font-mono text-xs text-loki-primary">
-                    $ npm install -g loki-cli
-                  </div>
+                  <h2 className="text-4xl font-black text-white uppercase tracking-tighter">L.O.K.I CLI</h2>
+                  <p className="text-zinc-500 text-sm leading-relaxed max-w-lg">
+                    Control your entire API ecosystem directly from your terminal. 
+                    The Loki CLI is a powerful tool for developers who live in the command line.
+                  </p>
                 </div>
-              </Card>
 
-              <Card title="Quick Start">
-                <div className="space-y-4">
-                  <p className="text-xs text-zinc-500">Authenticate your terminal session:</p>
-                  <div className="bg-black p-4 rounded-xl border border-zinc-800 font-mono text-xs text-loki-primary">
-                    $ loki login --api-key {user?.api_key || 'YOUR_KEY'}
+                <div className="space-y-6">
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3 text-loki-primary">
+                      <Terminal size={18} />
+                      <span className="text-[10px] font-black uppercase tracking-[0.3em]">Installation</span>
+                    </div>
+                    <div className="bg-black/40 p-5 rounded-2xl border border-zinc-800 font-mono text-sm flex justify-between items-center group">
+                      <code className="text-zinc-300">npm install -g @loki/cli</code>
+                      <button 
+                        onClick={() => {
+                          navigator.clipboard.writeText('npm install -g @loki/cli');
+                          showToast('Command copied!', 'success');
+                        }}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] text-loki-primary font-black uppercase tracking-widest"
+                      >
+                        Copy
+                      </button>
+                    </div>
                   </div>
-                </div>
-              </Card>
-            </div>
 
-            <Card title="Common Commands">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-12 gap-y-6">
-                <div className="space-y-2">
-                  <p className="text-xs font-bold text-white uppercase tracking-widest">Management</p>
-                  <ul className="space-y-3">
-                    <li className="flex justify-between items-center text-[11px]">
-                      <code className="text-loki-accent">loki apis</code>
-                      <span className="text-zinc-600">List all APIs</span>
-                    </li>
-                    <li className="flex justify-between items-center text-[11px]">
-                      <code className="text-loki-accent">loki endpoints --api-id 1</code>
-                      <span className="text-zinc-600">List endpoints</span>
-                    </li>
-                    <li className="flex justify-between items-center text-[11px]">
-                      <code className="text-loki-accent">loki deploy --file api.json</code>
-                      <span className="text-zinc-600">Deploy config</span>
-                    </li>
-                  </ul>
-                </div>
-                <div className="space-y-2">
-                  <p className="text-xs font-bold text-white uppercase tracking-widest">Execution</p>
-                  <ul className="space-y-3">
-                    <li className="flex justify-between items-center text-[11px]">
-                      <code className="text-loki-accent">loki call --api-id 1 --endpoint-id 2</code>
-                      <span className="text-zinc-600">Execute request</span>
-                    </li>
-                    <li className="flex justify-between items-center text-[11px]">
-                      <code className="text-loki-accent">loki token status --api-id 1</code>
-                      <span className="text-zinc-600">Check validity</span>
-                    </li>
-                    <li className="flex justify-between items-center text-[11px]">
-                      <code className="text-loki-accent">loki token refresh --api-id 1</code>
-                      <span className="text-zinc-600">Manual refresh</span>
-                    </li>
-                  </ul>
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3 text-loki-primary">
+                      <Shield size={18} />
+                      <span className="text-[10px] font-black uppercase tracking-[0.3em]">Authentication</span>
+                    </div>
+                    <div className="bg-black/40 p-5 rounded-2xl border border-zinc-800 font-mono text-sm flex justify-between items-center group">
+                      <code className="text-zinc-300">
+                        loki login {user?.api_key ? `${user.api_key.substring(0, 8)}...${user.api_key.substring(user.api_key.length - 4)}` : 'YOUR_API_KEY'}
+                      </code>
+                      <button 
+                        onClick={() => {
+                          navigator.clipboard.writeText(`loki login ${user?.api_key || 'YOUR_API_KEY'}`);
+                          showToast('Command copied!', 'success');
+                        }}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity text-[10px] text-loki-primary font-black uppercase tracking-widest"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </Card>
 
-            <div className="bg-loki-primary/5 border border-loki-primary/20 p-6 rounded-2xl">
-              <div className="flex gap-4 items-start">
-                <span className="text-2xl">💡</span>
-                <div className="space-y-1">
-                  <p className="text-sm font-bold text-loki-accent">Pro Tip</p>
-                  <p className="text-xs text-zinc-400 leading-relaxed">
-                    Use the <code className="text-loki-primary">--json</code> flag with any command to get raw data output, perfect for piping into tools like <code className="text-zinc-300">jq</code>.
-                  </p>
+              <div className="bg-zinc-900/20 border border-zinc-800 rounded-[3rem] p-10 space-y-8 backdrop-blur-sm">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-[10px] font-black text-zinc-600 uppercase tracking-[0.4em]">Common Commands</h4>
+                  <Zap size={14} className="text-loki-accent" />
+                </div>
+                <div className="space-y-4">
+                  {[
+                    { cmd: 'loki list', desc: 'List all registered APIs' },
+                    { cmd: 'loki call <api-id> <endpoint>', desc: 'Execute a proxy request' },
+                    { cmd: 'loki logs --tail', desc: 'Stream real-time logs' },
+                    { cmd: 'loki sync', desc: 'Sync local config with hub' },
+                  ].map((item, i) => (
+                    <div key={i} className="flex justify-between items-center p-4 bg-black/20 rounded-2xl border border-zinc-800/50 group hover:border-loki-primary/30 transition-all">
+                      <code className="text-loki-accent text-xs font-bold">{item.cmd}</code>
+                      <span className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest">{item.desc}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="pt-4">
+                  <Button variant="secondary" className="w-full text-[10px] font-black tracking-[0.2em] py-4">
+                    VIEW FULL CLI DOCUMENTATION
+                  </Button>
                 </div>
               </div>
             </div>

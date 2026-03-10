@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { Button } from '../../components/Button';
 import { LokiIcon } from '../../components/Branding';
 
-export const LandingPage: React.FC<{ onGetStarted: () => void, onAbout: () => void, onPlans: () => void }> = ({ onGetStarted, onAbout, onPlans }) => {
+export const LandingPage: React.FC<{ onGetStarted: () => void, onRegister: () => void, onAbout: () => void, onPlans: () => void }> = ({ onGetStarted, onRegister, onAbout, onPlans }) => {
   return (
     <div className="min-h-screen bg-loki-bg text-[#f5f5f5] selection:bg-loki-primary/30">
       {/* Background Gradient */}
@@ -54,7 +54,7 @@ export const LandingPage: React.FC<{ onGetStarted: () => void, onAbout: () => vo
             </div>
 
             <div className="flex flex-wrap gap-4 pt-4">
-              <Button size="lg" onClick={onGetStarted} className="bg-gradient-to-r from-loki-primary to-loki-accent text-zinc-950 border-none shadow-xl shadow-loki-primary/20 px-8">
+              <Button size="lg" onClick={onRegister} className="bg-gradient-to-r from-loki-primary to-loki-accent text-zinc-950 border-none shadow-xl shadow-loki-primary/20 px-8">
                 Criar conta gratuita
               </Button>
               <Button size="lg" variant="outline" onClick={onAbout} className="border-white/20 text-zinc-400 hover:border-loki-accent hover:text-loki-accent">
@@ -304,7 +304,7 @@ export const LandingPage: React.FC<{ onGetStarted: () => void, onAbout: () => vo
                   </ul>
                 </div>
                 <Button 
-                  onClick={plan.name === 'Free' ? onGetStarted : onAbout}
+                  onClick={plan.name === 'Free' ? onRegister : onAbout}
                   className={`w-full mt-10 ${plan.primary ? 'bg-gradient-to-r from-loki-primary to-loki-accent text-zinc-950' : 'bg-transparent border-white/20 text-zinc-400 hover:border-loki-accent hover:text-loki-accent'}`}
                 >
                   {plan.cta}
@@ -351,7 +351,7 @@ export const LandingPage: React.FC<{ onGetStarted: () => void, onAbout: () => vo
             Comece grátis, teste com segurança e evolua no seu ritmo.
           </p>
           <div className="flex flex-wrap justify-center gap-4 pt-4">
-            <Button size="lg" onClick={onGetStarted} className="bg-gradient-to-r from-loki-primary to-loki-accent text-zinc-950 border-none px-12">
+            <Button size="lg" onClick={onRegister} className="bg-gradient-to-r from-loki-primary to-loki-accent text-zinc-950 border-none px-12">
               Criar conta gratuita
             </Button>
             <Button size="lg" variant="outline" onClick={onAbout} className="border-white/20 text-zinc-400">

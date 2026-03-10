@@ -17,7 +17,14 @@ const AppContent: React.FC = () => {
 
   // Simple routing logic
   if (!user) {
-    if (view === 'landing') return <LandingPage onGetStarted={() => setView('login')} onAbout={() => setView('about')} onPlans={() => setView('plans')} />;
+    if (view === 'landing') return (
+      <LandingPage 
+        onGetStarted={() => setView('login')} 
+        onRegister={() => setView('register')}
+        onAbout={() => setView('about')} 
+        onPlans={() => setView('plans')} 
+      />
+    );
     if (view === 'about') return <AboutPage onBack={() => setView('landing')} />;
     if (view === 'plans') return <PlansPage onBack={() => setView('landing')} />;
 

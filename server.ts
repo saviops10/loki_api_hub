@@ -87,6 +87,7 @@ db.exec(`
     endpoint_id INTEGER,
     status INTEGER,
     response_body TEXT,
+    latency INTEGER,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(endpoint_id) REFERENCES endpoints(id)
   );
@@ -104,7 +105,8 @@ const ensureColumns = () => {
   const tables = {
     apis: ['auth_endpoint', 'auth_username', 'auth_password', 'auth_payload_template', 'token', 'token_expires_at', 'last_refresh'],
     endpoints: ['group_name'],
-    users: ['failed_attempts', 'lock_until', 'api_key', 'full_name', 'email', 'is_admin']
+    users: ['failed_attempts', 'lock_until', 'api_key', 'full_name', 'email', 'is_admin'],
+    logs: ['latency']
   };
 
   for (const [table, columns] of Object.entries(tables)) {
@@ -804,14 +806,20 @@ app.post("/api/proxy", validateApiKey, async (req, res) => {
 
     // 2. Execute request
     console.log(`[PROXY] Final URL: ${url}`);
+    const startTime = Date.now();
     let response = await executeRequest(currentToken);
+    const endTime = Date.now();
+    const latency = endTime - startTime;
 
     // 3. Handle 401: Refresh token and retry once
     if (response.status === 401 && api.auth_endpoint) {
       console.log(`[PROXY] 401 detected for API ${apiId}, attempting refresh and retry...`);
       currentToken = await refreshApiToken(api.id);
       if (currentToken) {
+        const retryStartTime = Date.now();
         response = await executeRequest(currentToken);
+        const retryEndTime = Date.now();
+        // For retries, we could sum or just take the last one. Let's take the last one.
       }
     }
 
@@ -826,8 +834,8 @@ app.post("/api/proxy", validateApiKey, async (req, res) => {
       console.log(`[LOKI R2] Payload too large for D1, simulating R2 storage...`);
     }
 
-    db.prepare("INSERT INTO logs (endpoint_id, status, response_body) VALUES (?, ?, ?)")
-      .run(endpoint.id, response.status, responseBodyStr);
+    db.prepare("INSERT INTO logs (endpoint_id, status, response_body, latency) VALUES (?, ?, ?, ?)")
+      .run(endpoint.id, response.status, responseBodyStr, latency);
 
     res.json({ 
       status: response.status,
@@ -975,6 +983,61 @@ app.get("/api/admin/system-status", adminMiddleware, (req, res) => {
   // In a real Cloudflare environment, we would check the bindings here.
   // For now, we return simulated data that reflects the environment.
   res.json(status);
+});
+
+app.get("/api/apis/:id/stats", validateApiKey, (req, res) => {
+  const userId = (req as any).userId;
+  const { id } = req.params;
+  
+  if (!checkOwnership('apis', Number(id), userId)) {
+    return res.status(403).json({ error: "Access denied" });
+  }
+
+  const logs = db.prepare(`
+    SELECT l.*, e.name as endpoint_name 
+    FROM logs l
+    JOIN endpoints e ON l.endpoint_id = e.id
+    WHERE e.api_id = ?
+    ORDER BY l.timestamp DESC
+    LIMIT 100
+  `).all(id) as any[];
+
+  if (logs.length === 0) {
+    return res.json({
+      stats: { total: 0, successRate: 0, avgLatency: 0, maxLatency: 0 },
+      latencyData: [],
+      errorDistribution: []
+    });
+  }
+
+  const total = logs.length;
+  const success = logs.filter(l => l.status >= 200 && l.status < 300).length;
+  const successRate = Math.round((success / total) * 100);
+  const latencies = logs.map(l => l.latency || 0).filter(l => l > 0);
+  const avgLatency = latencies.length > 0 ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length) : 0;
+  const maxLatency = latencies.length > 0 ? Math.max(...latencies) : 0;
+
+  const latencyData = logs.slice(0, 20).reverse().map(l => ({
+    time: new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    latency: l.latency || 0
+  }));
+
+  const errorCounts: Record<string, number> = {};
+  logs.forEach(l => {
+    const code = String(l.status);
+    errorCounts[code] = (errorCounts[code] || 0) + 1;
+  });
+
+  const errorDistribution = Object.entries(errorCounts).map(([name, value]) => ({
+    name: `HTTP ${name}`,
+    value
+  }));
+
+  res.json({
+    stats: { total, successRate, avgLatency, maxLatency },
+    latencyData,
+    errorDistribution
+  });
 });
 
 // Vite middleware for development

@@ -78,3 +78,18 @@ O projeto está configurado para ser implantado no **Cloudflare Pages**. O arqui
 ## 📄 Licença
 
 Este projeto está sob a licença MIT. Consulte o arquivo [LICENSE](LICENSE) para mais detalhes.
+
+---
+
+## 🗺 Roadmap de Atualizações
+
+### Fase 2: Segurança Avançada & MFA (Próximo Passo)
+- **Google Authenticator (2FA):** Implementação de autenticação em duas etapas para login administrativo.
+  - Bibliotecas: `speakeasy` (geração/validação de TOTP) e `qrcode` (geração de QR Code para pareamento).
+- **Políticas de Rate Limiting:** Controle granular de requisições por API Key.
+- **Alertas Críticos:** Notificações via Webhook/E-mail para falhas de integração.
+
+### Fase 3: Ecossistema & Expansão
+- **Custom Domains:** Suporte para domínios personalizados no proxy.
+- **SDKs Oficiais:** Lançamento de bibliotecas para Node.js, Python e Go.
+- **Marketplace de Plugins:** Extensões para transformação de dados on-the-fly.

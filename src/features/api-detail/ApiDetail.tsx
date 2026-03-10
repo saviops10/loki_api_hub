@@ -9,7 +9,12 @@ import { Input } from '../../components/Input';
 import { LoadingSpinner, EmptyState } from '../../components/Feedback';
 import { ConfirmModal } from '../../components/Modal';
 import { ProfileMenu } from '../../components/ProfileMenu';
-import { generateCurl, formatDate } from '../../utils/helpers';
+import { generateCurl, generateSnippet, formatDate } from '../../utils/helpers';
+import { 
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
+  BarChart, Bar, Cell, PieChart, Pie
+} from 'recharts';
+import { Code, BarChart3, Activity, Terminal, Shield, Zap } from 'lucide-react';
 
 export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ api: initialApi, onBack }) => {
   const { showToast } = useApp();
@@ -17,16 +22,36 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
   const [endpoints, setEndpoints] = useLocalStorage<Endpoint[]>('smart_api_hub_endpoints', []);
   const [testResults, setTestResults] = useState<Record<number, any>>({});
   const [selectedEndpoint, setSelectedEndpoint] = useState<any>(null);
-  const [activeEndpointTab, setActiveEndpointTab] = useState<'params' | 'payload' | 'curl' | 'logs'>('params');
+  const [activeEndpointTab, setActiveEndpointTab] = useState<'params' | 'payload' | 'code' | 'logs' | 'stats'>('params');
+  const [selectedLanguage, setSelectedLanguage] = useState<'curl' | 'js' | 'python' | 'go'>('curl');
   const [endpointLogs, setEndpointLogs] = useState<Record<number, Log[]>>({});
   const [endpointParams, setEndpointParams] = useLocalStorage<Record<number, { key: string, value: string }[]>>('smart_api_hub_endpoint_params', {});
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [isRefreshingToken, setIsRefreshingToken] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [viewMode, setViewMode] = useState<'endpoints' | 'analytics'>('endpoints');
+  const [stats, setStats] = useState<any>(null);
   
   const [expandedLogId, setExpandedLogId] = useState<number | null>(null);
   
   const { call, loading } = useApi();
+
+  // Simulated analytics data
+  const statsData = [
+    { name: '00:00', latency: 120, success: 100 },
+    { name: '04:00', latency: 145, success: 98 },
+    { name: '08:00', latency: 210, success: 95 },
+    { name: '12:00', latency: 180, success: 99 },
+    { name: '16:00', latency: 250, success: 92 },
+    { name: '20:00', latency: 150, success: 100 },
+  ];
+
+  const errorDistribution = [
+    { name: '200 OK', value: 85, color: '#00F5C8' },
+    { name: '401 Unauthorized', value: 8, color: '#F27D26' },
+    { name: '404 Not Found', value: 5, color: '#6366f1' },
+    { name: '500 Server Error', value: 2, color: '#ef4444' },
+  ];
 
   const fetchEndpoints = async () => {
     const data = await call(`/api/endpoints/${api.id}`);
@@ -38,10 +63,27 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
     if (data) setApi(data);
   };
 
+  const fetchStats = async () => {
+    const data = await call(`/api/apis/${api.id}/stats`);
+    if (data) setStats(data);
+  };
+
   useEffect(() => {
     fetchEndpoints();
     fetchApiDetails();
   }, [initialApi.id]);
+
+  useEffect(() => {
+    if (viewMode === 'analytics') {
+      fetchStats();
+    }
+  }, [viewMode, api.id]);
+
+  useEffect(() => {
+    if (selectedEndpoint && activeEndpointTab === 'logs') {
+      fetchLogs(selectedEndpoint.id);
+    }
+  }, [selectedEndpoint?.id, activeEndpointTab]);
 
   const handleAddEndpoint = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -226,6 +268,20 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
                 </span>
               </div>
               <div className="flex gap-2 w-full md:w-auto">
+                <div className="flex p-1 bg-zinc-900/50 rounded-xl border border-zinc-800 mr-2">
+                  <button 
+                    onClick={() => setViewMode('endpoints')}
+                    className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${viewMode === 'endpoints' ? 'bg-loki-primary text-zinc-950' : 'text-zinc-500 hover:text-white'}`}
+                  >
+                    Endpoints
+                  </button>
+                  <button 
+                    onClick={() => setViewMode('analytics')}
+                    className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${viewMode === 'analytics' ? 'bg-loki-primary text-zinc-950' : 'text-zinc-500 hover:text-white'}`}
+                  >
+                    Analytics
+                  </button>
+                </div>
                 <Input 
                   placeholder="Search endpoints..." 
                   value={searchTerm}
@@ -236,7 +292,102 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
               </div>
             </div>
 
-            {loading && endpoints.length === 0 ? (
+            {viewMode === 'analytics' ? (
+              <div className="space-y-8 animate-in fade-in duration-500">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  <Card className="bg-zinc-900/40 border-zinc-800/50">
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Total Requests</p>
+                      <h3 className="text-3xl font-black text-white tracking-tighter">{stats?.stats?.total || 0}</h3>
+                    </div>
+                  </Card>
+                  <Card className="bg-zinc-900/40 border-zinc-800/50">
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Success Rate</p>
+                      <div className="flex items-end gap-2">
+                        <h3 className="text-3xl font-black text-loki-primary tracking-tighter">{stats?.stats?.successRate || 0}%</h3>
+                        <div className="h-1.5 w-12 bg-zinc-800 rounded-full mb-2 overflow-hidden">
+                          <div className="h-full bg-loki-primary" style={{ width: `${stats?.stats?.successRate || 0}%` }} />
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                  <Card className="bg-zinc-900/40 border-zinc-800/50">
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Avg Latency</p>
+                      <h3 className="text-3xl font-black text-loki-accent tracking-tighter">{stats?.stats?.avgLatency || 0}ms</h3>
+                    </div>
+                  </Card>
+                  <Card className="bg-zinc-900/40 border-zinc-800/50">
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Max Latency</p>
+                      <h3 className="text-3xl font-black text-zinc-400 tracking-tighter">{stats?.stats?.maxLatency || 0}ms</h3>
+                    </div>
+                  </Card>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  <Card title="Latency Over Time (ms)">
+                    <div className="h-64 w-full mt-4">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={stats?.latencyData || []}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" vertical={false} />
+                          <XAxis dataKey="time" stroke="#4b5563" fontSize={10} tickLine={false} axisLine={false} />
+                          <YAxis stroke="#4b5563" fontSize={10} tickLine={false} axisLine={false} />
+                          <Tooltip 
+                            contentStyle={{ backgroundColor: '#09090b', border: '1px solid #27272a', borderRadius: '12px' }}
+                            itemStyle={{ color: '#00F5C8', fontSize: '12px' }}
+                          />
+                          <Line type="monotone" dataKey="latency" stroke="#00F5C8" strokeWidth={3} dot={{ fill: '#00F5C8', r: 4 }} activeDot={{ r: 6, strokeWidth: 0 }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </Card>
+
+                  <Card title="Response Codes Distribution">
+                    <div className="h-64 w-full mt-4 flex items-center">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={stats?.errorDistribution || []}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={60}
+                            outerRadius={80}
+                            paddingAngle={5}
+                            dataKey="value"
+                          >
+                            {(stats?.errorDistribution || []).map((entry: any, index: number) => (
+                              <Cell key={`cell-${index}`} fill={
+                                entry.name.includes('200') ? '#00F5C8' :
+                                entry.name.includes('401') ? '#F27D26' :
+                                entry.name.includes('404') ? '#6366f1' : '#ef4444'
+                              } />
+                            ))}
+                          </Pie>
+                          <Tooltip 
+                            contentStyle={{ backgroundColor: '#09090b', border: '1px solid #27272a', borderRadius: '12px' }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                      <div className="space-y-2 pr-8">
+                        {(stats?.errorDistribution || []).map((item: any, i: number) => (
+                          <div key={i} className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: 
+                                item.name.includes('200') ? '#00F5C8' :
+                                item.name.includes('401') ? '#F27D26' :
+                                item.name.includes('404') ? '#6366f1' : '#ef4444'
+                             }} />
+                            <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">{item.name}</span>
+                            <span className="text-[10px] font-black text-white ml-auto">{Math.round((item.value / (stats?.stats?.total || 1)) * 100)}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </Card>
+                </div>
+              </div>
+            ) : loading && endpoints.length === 0 ? (
               <LoadingSpinner label="Loading endpoints..." />
             ) : filteredEndpoints.length > 0 ? (
               <div className="space-y-12">
@@ -343,7 +494,7 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
                 </div>
 
                 <div className="flex gap-8 mt-8 border-b border-zinc-800/50">
-                  {['params', 'payload', 'curl', 'logs'].map((tab) => (
+                  {['params', 'payload', 'code', 'logs', 'stats'].map((tab) => (
                     <button 
                       key={tab}
                       onClick={() => {
@@ -453,23 +604,66 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
                   </div>
                 )}
 
-                {activeEndpointTab === 'curl' && (
-                  <div className="space-y-4">
+                {activeEndpointTab === 'code' && (
+                  <div className="space-y-6">
                     <div className="flex justify-between items-center">
-                      <h3 className="text-sm font-black text-white uppercase tracking-widest">cURL Command</h3>
+                      <div className="flex p-1 bg-zinc-900/50 rounded-xl border border-zinc-800">
+                        {['curl', 'js', 'python', 'go'].map((lang) => (
+                          <button 
+                            key={lang}
+                            onClick={() => setSelectedLanguage(lang as any)}
+                            className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${selectedLanguage === lang ? 'bg-loki-primary text-zinc-950' : 'text-zinc-500 hover:text-white'}`}
+                          >
+                            {lang === 'js' ? 'JavaScript' : lang.toUpperCase()}
+                          </button>
+                        ))}
+                      </div>
                       <button 
                         onClick={() => {
-                          navigator.clipboard.writeText(generateCurl(api, selectedEndpoint, endpointParams[selectedEndpoint.id] || []));
-                          showToast('cURL copied to clipboard!', 'success');
+                          const snippet = selectedLanguage === 'curl' 
+                            ? generateCurl(api, selectedEndpoint, endpointParams[selectedEndpoint.id] || [])
+                            : generateSnippet(selectedLanguage, api, selectedEndpoint, endpointParams[selectedEndpoint.id] || []);
+                          navigator.clipboard.writeText(snippet);
+                          showToast('Snippet copied!', 'success');
                         }}
                         className="text-[10px] text-loki-primary hover:text-loki-accent font-black uppercase tracking-widest"
                       >
-                        Copy Command
+                        Copy Snippet
                       </button>
                     </div>
                     <pre className="bg-black/40 p-6 rounded-[2rem] border-2 border-zinc-800/50 text-[11px] font-mono text-zinc-400 overflow-x-auto whitespace-pre-wrap leading-relaxed">
-                      {generateCurl(api, selectedEndpoint, endpointParams[selectedEndpoint.id] || [])}
+                      {selectedLanguage === 'curl' 
+                        ? generateCurl(api, selectedEndpoint, endpointParams[selectedEndpoint.id] || [])
+                        : generateSnippet(selectedLanguage, api, selectedEndpoint, endpointParams[selectedEndpoint.id] || [])}
                     </pre>
+                  </div>
+                )}
+
+                {activeEndpointTab === 'stats' && (
+                  <div className="space-y-6 animate-in fade-in duration-500">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="p-4 bg-zinc-900/50 rounded-2xl border border-zinc-800">
+                        <span className="text-[10px] text-zinc-600 font-black uppercase tracking-widest block mb-1">Avg Latency</span>
+                        <span className="text-xl font-black text-white">{stats?.stats?.avgLatency || 0}ms</span>
+                      </div>
+                      <div className="p-4 bg-zinc-900/50 rounded-2xl border border-zinc-800">
+                        <span className="text-[10px] text-zinc-600 font-black uppercase tracking-widest block mb-1">Success Rate</span>
+                        <span className="text-xl font-black text-loki-primary">{stats?.stats?.successRate || 0}%</span>
+                      </div>
+                    </div>
+                    <div className="h-48 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={stats?.latencyData || []}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" vertical={false} />
+                          <XAxis dataKey="time" stroke="#4b5563" fontSize={8} tickLine={false} axisLine={false} />
+                          <YAxis stroke="#4b5563" fontSize={8} tickLine={false} axisLine={false} />
+                          <Tooltip 
+                            contentStyle={{ backgroundColor: '#09090b', border: '1px solid #27272a', borderRadius: '12px' }}
+                          />
+                          <Bar dataKey="latency" fill="#00F5C8" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
                   </div>
                 )}
 
