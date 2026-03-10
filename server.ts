@@ -425,10 +425,17 @@ app.post("/api/auth/register", (req, res) => {
     let freePlan = db.prepare("SELECT id FROM plans WHERE name = 'Free'").get() as any;
     if (!freePlan) {
       console.log("[AUTH] Free plan not found, seeding default plans...");
-      const insertPlan = db.prepare("INSERT INTO plans (name, request_limit, max_apis, max_endpoints, features, price) VALUES (?, ?, ?, ?, ?, ?)");
-      insertPlan.run('Free', 1000, 5, 20, JSON.stringify(['Até 5 integrações ativas.', 'Painel básico.', 'Ambiente sandbox.', 'Logs limitados.']), 'R$ 0');
-      freePlan = db.prepare("SELECT id FROM plans WHERE name = 'Free'").get() as any;
+      try {
+        const insertPlan = db.prepare("INSERT INTO plans (name, request_limit, max_apis, max_endpoints, features, price) VALUES (?, ?, ?, ?, ?, ?)");
+        insertPlan.run('Free', 1000, 5, 20, JSON.stringify(['Até 5 integrações ativas.', 'Painel básico.', 'Ambiente sandbox.', 'Logs limitados.']), 'R$ 0');
+        freePlan = db.prepare("SELECT id FROM plans WHERE name = 'Free'").get() as any;
+      } catch (planErr: any) {
+        console.error("[AUTH] Failed to seed Free plan:", planErr.message);
+      }
     }
+
+    const planId = freePlan?.id || 1;
+    console.log(`[AUTH] Assigning Plan ID: ${planId} to user ${username}`);
 
     const info = db.prepare("INSERT INTO users (username, full_name, email, password, api_key, is_admin, plan_id) VALUES (?, ?, ?, ?, ?, ?, ?)").run(
       username, 
@@ -437,7 +444,7 @@ app.post("/api/auth/register", (req, res) => {
       hashedPassword, 
       apiKey, 
       isAdmin, 
-      freePlan?.id || 1
+      planId
     );
     
     console.log(`[AUTH] Registration success: ${username}. ID: ${info.lastInsertRowid}`);
