@@ -23,6 +23,17 @@ db.pragma("journal_mode = WAL");
 
 // Initialize Tables
 db.exec(`
+  CREATE TABLE IF NOT EXISTS plans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE,
+    request_limit INTEGER,
+    max_apis INTEGER,
+    max_endpoints INTEGER,
+    features TEXT,
+    price TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE,
@@ -32,7 +43,11 @@ db.exec(`
     api_key TEXT UNIQUE,
     is_admin INTEGER DEFAULT 0,
     failed_attempts INTEGER DEFAULT 0,
-    lock_until DATETIME
+    lock_until DATETIME,
+    plan_id INTEGER,
+    request_count INTEGER DEFAULT 0,
+    last_reset_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(plan_id) REFERENCES plans(id)
   );
 `);
 
@@ -44,6 +59,21 @@ if (!columns.includes('email')) db.exec("ALTER TABLE users ADD COLUMN email TEXT
 if (!columns.includes('is_admin')) db.exec("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0");
 if (!columns.includes('failed_attempts')) db.exec("ALTER TABLE users ADD COLUMN failed_attempts INTEGER DEFAULT 0");
 if (!columns.includes('lock_until')) db.exec("ALTER TABLE users ADD COLUMN lock_until DATETIME");
+if (!columns.includes('plan_id')) db.exec("ALTER TABLE users ADD COLUMN plan_id INTEGER REFERENCES plans(id)");
+if (!columns.includes('request_count')) db.exec("ALTER TABLE users ADD COLUMN request_count INTEGER DEFAULT 0");
+if (!columns.includes('last_reset_date')) db.exec("ALTER TABLE users ADD COLUMN last_reset_date DATETIME DEFAULT CURRENT_TIMESTAMP");
+
+// Seed default plans if they don't exist
+const planCount = db.prepare("SELECT COUNT(*) as count FROM plans").get() as any;
+if (planCount.count === 0) {
+  const insertPlan = db.prepare("INSERT INTO plans (name, request_limit, max_apis, max_endpoints, features, price) VALUES (?, ?, ?, ?, ?, ?)");
+  insertPlan.run('Free', 1000, 5, 20, JSON.stringify(['Até 5 integrações ativas.', 'Painel básico.', 'Ambiente sandbox.', 'Logs limitados.']), 'R$ 0');
+  insertPlan.run('Business', 100000, 100, 1000, JSON.stringify(['Integrações ilimitadas.', 'Automação avançada.', 'Logs ampliados.', 'Suporte prioritário.']), 'Sob consulta');
+  insertPlan.run('Custom', 1000000, 1000, 10000, JSON.stringify(['Arquitetura personalizada.', 'SLAs dedicados.', 'Governança multi-times.', 'Consultoria.']), 'Sob medida');
+}
+
+// Assign 'Free' plan to existing users who don't have one
+db.exec("UPDATE users SET plan_id = (SELECT id FROM plans WHERE name = 'Free') WHERE plan_id IS NULL");
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS api_keys (
@@ -342,12 +372,22 @@ app.post("/api/auth/login", (req, res) => {
     db.prepare("UPDATE users SET failed_attempts = 0, lock_until = NULL WHERE id = ?").run(user.id);
     const sessionToken = crypto.randomBytes(32).toString('hex');
     db.prepare("INSERT INTO sessions (token, user_id) VALUES (?, ?)").run(sessionToken, user.id);
+    
+    const plan = db.prepare("SELECT * FROM plans WHERE id = ?").get(user.plan_id) as any;
+    
     res.json({ 
       id: user.id, 
       username: user.username, 
       api_key: user.api_key, 
       is_admin: user.is_admin,
-      session_token: sessionToken 
+      session_token: sessionToken,
+      plan: plan ? {
+        id: plan.id,
+        name: plan.name,
+        request_limit: plan.request_limit,
+        request_count: user.request_count,
+        features: JSON.parse(plan.features)
+      } : null
     });
   } else {
     console.warn(`[AUTH] Login failure: Invalid password (${username})`);
@@ -379,8 +419,9 @@ app.post("/api/auth/register", (req, res) => {
     // Check if this is the first user
     const userCount = (db.prepare("SELECT COUNT(*) as count FROM users").get() as any).count;
     const isAdmin = userCount === 0 ? 1 : 0;
+    const freePlan = db.prepare("SELECT id FROM plans WHERE name = 'Free'").get() as any;
 
-    const info = db.prepare("INSERT INTO users (username, full_name, email, password, api_key, is_admin) VALUES (?, ?, ?, ?, ?, ?)").run(username, fullName, email, hashedPassword, apiKey, isAdmin);
+    const info = db.prepare("INSERT INTO users (username, full_name, email, password, api_key, is_admin, plan_id) VALUES (?, ?, ?, ?, ?, ?, ?)").run(username, fullName, email, hashedPassword, apiKey, isAdmin, freePlan?.id || 1);
     console.log(`[AUTH] Registration success: ${username}. API Key generated. Admin: ${isAdmin}`);
     res.json({ id: info.lastInsertRowid, username, apiKey, is_admin: isAdmin });
   } catch (e: any) {
@@ -729,6 +770,27 @@ app.post("/api/proxy", validateApiKey, async (req, res) => {
     const { apiId, endpointId, body, headers: customHeaders } = req.body;
     const userId = (req as any).userId;
     
+    // Rate Limit Check
+    const userPlan = db.prepare(`
+      SELECT u.request_count, p.request_limit, u.last_reset_date 
+      FROM users u 
+      JOIN plans p ON u.plan_id = p.id 
+      WHERE u.id = ?
+    `).get(userId) as any;
+
+    if (userPlan) {
+      const lastReset = new Date(userPlan.last_reset_date);
+      const now = new Date();
+      if (now.getMonth() !== lastReset.getMonth() || now.getFullYear() !== lastReset.getFullYear()) {
+        db.prepare("UPDATE users SET request_count = 0, last_reset_date = CURRENT_TIMESTAMP WHERE id = ?").run(userId);
+        userPlan.request_count = 0;
+      }
+
+      if (userPlan.request_count >= userPlan.request_limit) {
+        return res.status(429).json({ error: "Rate limit exceeded for your current plan. Please upgrade." });
+      }
+    }
+
     console.log(`[LOKI PROXY] Request from User ${userId} for API ${apiId}`);
     console.log(`[LOKI PROXY] API_KEY used: ${req.headers['x-loki-api-key']}`);
     
@@ -837,6 +899,9 @@ app.post("/api/proxy", validateApiKey, async (req, res) => {
     db.prepare("INSERT INTO logs (endpoint_id, status, response_body, latency) VALUES (?, ?, ?, ?)")
       .run(endpoint.id, response.status, responseBodyStr, latency);
 
+    // Increment request count
+    db.prepare("UPDATE users SET request_count = request_count + 1 WHERE id = ?").run(userId);
+
     res.json({ 
       status: response.status,
       statusText: response.statusText,
@@ -865,8 +930,55 @@ const adminMiddleware = (req: any, res: any, next: any) => {
 };
 
 app.get("/api/admin/users", adminMiddleware, (req, res) => {
-  const users = db.prepare("SELECT id, username, full_name, email, is_admin FROM users").all();
+  const users = db.prepare(`
+    SELECT u.id, u.username, u.full_name, u.email, u.is_admin, u.request_count, p.name as plan_name 
+    FROM users u 
+    LEFT JOIN plans p ON u.plan_id = p.id
+  `).all();
   res.json(users);
+});
+
+app.get("/api/admin/plans", adminMiddleware, (req, res) => {
+  const plans = db.prepare("SELECT * FROM plans").all();
+  res.json(plans);
+});
+
+app.post("/api/admin/plans", adminMiddleware, (req, res) => {
+  const { name, request_limit, max_apis, max_endpoints, features, price } = req.body;
+  try {
+    const result = db.prepare(`
+      INSERT INTO plans (name, request_limit, max_apis, max_endpoints, features, price)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(name, request_limit, max_apis, max_endpoints, JSON.stringify(features), price);
+    res.json({ id: result.lastInsertRowid });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put("/api/admin/plans/:id", adminMiddleware, (req, res) => {
+  const { id } = req.params;
+  const { name, request_limit, max_apis, max_endpoints, features, price } = req.body;
+  try {
+    db.prepare(`
+      UPDATE plans 
+      SET name = ?, request_limit = ?, max_apis = ?, max_endpoints = ?, features = ?, price = ?
+      WHERE id = ?
+    `).run(name, request_limit, max_apis, max_endpoints, JSON.stringify(features), price, id);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete("/api/admin/plans/:id", adminMiddleware, (req, res) => {
+  const { id } = req.params;
+  try {
+    db.prepare("DELETE FROM plans WHERE id = ?").run(id);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.get("/api/admin/apis", adminMiddleware, (req, res) => {

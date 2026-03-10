@@ -4,6 +4,8 @@ import { Button } from '../../components/Button';
 import { LokiIcon } from '../../components/Branding';
 
 export const LandingPage: React.FC<{ onGetStarted: () => void, onRegister: () => void, onAbout: () => void, onPlans: () => void }> = ({ onGetStarted, onRegister, onAbout, onPlans }) => {
+  const [selectedPlan, setSelectedPlan] = React.useState('Business');
+
   return (
     <div className="min-h-screen bg-loki-bg text-[#f5f5f5] selection:bg-loki-primary/30">
       {/* Background Gradient */}
@@ -284,7 +286,11 @@ export const LandingPage: React.FC<{ onGetStarted: () => void, onRegister: () =>
                 primary: false
               }
             ].map((plan, i) => (
-              <div key={i} className={`bg-[#0b1020] p-8 rounded-3xl border ${plan.primary ? 'border-loki-accent shadow-2xl shadow-loki-primary/10' : 'border-white/5'} flex flex-col justify-between`}>
+              <div 
+                key={i} 
+                onClick={() => setSelectedPlan(plan.name)}
+                className={`bg-[#0b1020] p-8 rounded-3xl border transition-all cursor-pointer flex flex-col justify-between ${selectedPlan === plan.name ? 'border-loki-accent shadow-2xl shadow-loki-primary/10 scale-[1.02]' : 'border-white/5 hover:border-white/20'}`}
+              >
                 <div className="space-y-6">
                   <div>
                     <div className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mb-1">{plan.tag}</div>
@@ -304,8 +310,11 @@ export const LandingPage: React.FC<{ onGetStarted: () => void, onRegister: () =>
                   </ul>
                 </div>
                 <Button 
-                  onClick={plan.name === 'Free' ? onRegister : onAbout}
-                  className={`w-full mt-10 ${plan.primary ? 'bg-gradient-to-r from-loki-primary to-loki-accent text-zinc-950' : 'bg-transparent border-white/20 text-zinc-400 hover:border-loki-accent hover:text-loki-accent'}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    plan.name === 'Free' ? onRegister() : onAbout();
+                  }}
+                  className={`w-full mt-10 transition-all ${selectedPlan === plan.name ? 'bg-gradient-to-r from-loki-primary to-loki-accent text-zinc-950' : 'bg-zinc-900 border border-white/10 text-zinc-400 hover:border-loki-accent hover:text-loki-accent'}`}
                 >
                   {plan.cta}
                 </Button>

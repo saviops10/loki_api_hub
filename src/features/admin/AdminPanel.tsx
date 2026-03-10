@@ -6,7 +6,7 @@ import { Button } from '../../components/Button';
 import { LoadingSpinner } from '../../components/Feedback';
 import { ProfileMenu } from '../../components/ProfileMenu';
 
-type AdminTab = 'users' | 'apis' | 'system';
+type AdminTab = 'users' | 'apis' | 'plans' | 'system';
 
 export const AdminPanel: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const { user, showToast } = useApp();
@@ -14,6 +14,7 @@ export const AdminPanel: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('users');
   const [users, setUsers] = useState<any[]>([]);
   const [apis, setApis] = useState<any[]>([]);
+  const [plans, setPlans] = useState<any[]>([]);
   const [systemStatus, setSystemStatus] = useState<any>(null);
 
   const fetchData = async () => {
@@ -23,6 +24,9 @@ export const AdminPanel: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     } else if (activeTab === 'apis') {
       const data = await call('/api/admin/apis');
       if (data) setApis(data);
+    } else if (activeTab === 'plans') {
+      const data = await call('/api/admin/plans');
+      if (data) setPlans(data);
     } else if (activeTab === 'system') {
       const data = await call('/api/admin/system-status');
       if (data) setSystemStatus(data);
@@ -82,6 +86,12 @@ export const AdminPanel: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             <span>🔌</span> APIs
           </button>
           <button 
+            onClick={() => setActiveTab('plans')}
+            className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-3 ${activeTab === 'plans' ? 'bg-loki-primary text-zinc-950' : 'text-zinc-400 hover:bg-zinc-800'}`}
+          >
+            <span>💎</span> Plans
+          </button>
+          <button 
             onClick={() => setActiveTab('system')}
             className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-3 ${activeTab === 'system' ? 'bg-loki-primary text-zinc-950' : 'text-zinc-400 hover:bg-zinc-800'}`}
           >
@@ -95,10 +105,10 @@ export const AdminPanel: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             <div className="flex justify-between items-end">
               <div>
                 <h2 className="text-3xl font-black text-white uppercase tracking-tight">
-                  {activeTab === 'users' ? 'User Management' : activeTab === 'apis' ? 'API Inventory' : 'Cloudflare Stack'}
+                  {activeTab === 'users' ? 'User Management' : activeTab === 'apis' ? 'API Inventory' : activeTab === 'plans' ? 'Plan Management' : 'Cloudflare Stack'}
                 </h2>
                 <p className="text-zinc-500 text-sm mt-1">
-                  {activeTab === 'users' ? 'Manage system users and their permissions.' : activeTab === 'apis' ? 'Overview of all registered APIs across the platform.' : 'Real-time status of Cloudflare infrastructure.'}
+                  {activeTab === 'users' ? 'Manage system users and their permissions.' : activeTab === 'apis' ? 'Overview of all registered APIs across the platform.' : activeTab === 'plans' ? 'Manage subscription plans and their limits.' : 'Real-time status of Cloudflare infrastructure.'}
                 </p>
               </div>
               <Button variant="secondary" onClick={fetchData} size="sm">Refresh</Button>
@@ -115,6 +125,8 @@ export const AdminPanel: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         <tr className="border-b border-zinc-800 bg-zinc-900/50">
                           <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-zinc-500">User</th>
                           <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-zinc-500">Email</th>
+                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-zinc-500">Plan</th>
+                          <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-zinc-500">Usage</th>
                           <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-zinc-500">Status</th>
                           <th className="px-6 py-4 text-[10px] uppercase tracking-widest font-black text-zinc-500">Actions</th>
                         </tr>
@@ -134,6 +146,12 @@ export const AdminPanel: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                               </div>
                             </td>
                              <td className="px-6 py-4 text-sm text-zinc-400">{u.email}</td>
+                            <td className="px-6 py-4">
+                              <span className="text-zinc-300 text-xs font-bold">{u.plan_name || 'Free'}</span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="text-zinc-400 text-xs">{u.request_count || 0} calls</span>
+                            </td>
                             <td className="px-6 py-4">
                               {u.is_admin === 1 ? (
                                 <span className="bg-loki-primary/10 text-loki-primary text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-md border border-loki-primary/20">Admin</span>
@@ -172,6 +190,40 @@ export const AdminPanel: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                           <span className="text-[10px] text-zinc-600 font-bold">
                             Registered: {new Date(api.created_at || Date.now()).toLocaleDateString()}
                           </span>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+
+                {activeTab === 'plans' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {plans.map(plan => (
+                      <Card 
+                        key={plan.id} 
+                        title={plan.name} 
+                        subtitle={plan.price}
+                        footer={<span className="text-[10px] text-zinc-500">Limit: {plan.request_limit.toLocaleString()} / month</span>}
+                      >
+                        <div className="space-y-4">
+                          <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest">
+                            <span className="text-zinc-500">Max APIs</span>
+                            <span className="text-white">{plan.max_apis}</span>
+                          </div>
+                          <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest">
+                            <span className="text-zinc-500">Max Endpoints</span>
+                            <span className="text-white">{plan.max_endpoints}</span>
+                          </div>
+                          <div className="pt-2 border-t border-zinc-800">
+                            <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest mb-2">Features</p>
+                            <ul className="space-y-1">
+                              {JSON.parse(plan.features).map((f: string, i: number) => (
+                                <li key={i} className="text-[10px] text-zinc-400 flex items-center gap-2">
+                                  <span className="text-loki-primary">✔</span> {f}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
                         </div>
                       </Card>
                     ))}
