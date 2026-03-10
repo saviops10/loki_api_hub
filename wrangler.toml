@@ -9,11 +9,11 @@ NODE_ENV = "production"
 [[d1_databases]]
 binding = "DB"
 database_name = "loki-db-prod"
-database_id = "SEU_DATABASE_ID_AQUI" # Gerado ao rodar 'npx wrangler d1 create loki-db-prod'
+database_id = "50816303-3353-45dd-9b31-d85d65ff138a" # Gerado ao rodar 'npx wrangler d1 create loki-db-prod'
 
 [[kv_namespaces]]
 binding = "SESSION"
-id = "SEU_KV_NAMESPACE_ID_AQUI" # Gerado ao rodar 'npx wrangler kv:namespace create loki-kv-sessions'
+id = "94f3d1f376cd4986988e9c3f346e011d" # Gerado ao rodar 'npx wrangler kv:namespace create loki-kv-sessions'
 
 [[r2_buckets]]
 binding = "PAYLOADS"
