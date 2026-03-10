@@ -48,19 +48,25 @@ export const useApi = (options: UseApiOptions = {}) => {
         headers,
       });
 
-      const data = await response.json().catch(() => null);
+      const text = await response.text().catch(() => '');
+      let data = null;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        // Not JSON
+      }
 
       if (!response.ok) {
         // Map HTTP errors to user-friendly messages
-        let message = 'An unexpected error occurred';
+        let message = data?.error || data?.message || text || 'An unexpected error occurred';
+        
         if (response.status === 401) {
           message = 'Session expired. Please login again.';
           setUser(null);
         }
-        if (response.status === 403) message = 'You do not have permission to perform this action.';
-        if (response.status === 404) message = 'The requested resource was not found.';
-        if (response.status >= 500) message = 'Server error. Please try again later.';
-        if (data?.error) message = data.error;
+        if (response.status === 403 && !data?.error) message = 'You do not have permission to perform this action.';
+        if (response.status === 404 && !data?.error) message = 'The requested resource was not found.';
+        if (response.status >= 500 && !data?.error) message = 'Server error. Please try again later.';
 
         // Retry logic for 5xx errors
         if (response.status >= 500 && retryCount < (options.retryLimit || 0)) {

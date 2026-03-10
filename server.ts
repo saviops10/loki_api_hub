@@ -403,33 +403,54 @@ app.post("/api/auth/login", (req, res) => {
 });
 
 app.post("/api/auth/register", (req, res) => {
-  const validation = RegisterSchema.safeParse(req.body);
-  if (!validation.success) {
-    return res.status(400).json({ 
-      error: validation.error.issues[0].message
-    });
-  }
-  const { username, fullName, email, password } = validation.data;
-  console.log(`[AUTH] Registration attempt for: ${username}`);
-
   try {
+    const validation = RegisterSchema.safeParse(req.body);
+    if (!validation.success) {
+      console.warn(`[AUTH] Registration validation failed: ${JSON.stringify(validation.error.issues)}`);
+      return res.status(400).json({ 
+        error: validation.error.issues[0].message
+      });
+    }
+    const { username, fullName, email, password } = validation.data;
+    console.log(`[AUTH] Registration attempt for: ${username} (${email})`);
+
     const hashedPassword = bcrypt.hashSync(password, 10);
     const apiKey = `loki_${crypto.randomBytes(16).toString('hex')}`;
     
     // Check if this is the first user
     const userCount = (db.prepare("SELECT COUNT(*) as count FROM users").get() as any).count;
     const isAdmin = userCount === 0 ? 1 : 0;
-    const freePlan = db.prepare("SELECT id FROM plans WHERE name = 'Free'").get() as any;
+    
+    // Ensure plans exist and get Free plan
+    let freePlan = db.prepare("SELECT id FROM plans WHERE name = 'Free'").get() as any;
+    if (!freePlan) {
+      console.log("[AUTH] Free plan not found, seeding default plans...");
+      const insertPlan = db.prepare("INSERT INTO plans (name, request_limit, max_apis, max_endpoints, features, price) VALUES (?, ?, ?, ?, ?, ?)");
+      insertPlan.run('Free', 1000, 5, 20, JSON.stringify(['Até 5 integrações ativas.', 'Painel básico.', 'Ambiente sandbox.', 'Logs limitados.']), 'R$ 0');
+      freePlan = db.prepare("SELECT id FROM plans WHERE name = 'Free'").get() as any;
+    }
 
-    const info = db.prepare("INSERT INTO users (username, full_name, email, password, api_key, is_admin, plan_id) VALUES (?, ?, ?, ?, ?, ?, ?)").run(username, fullName, email, hashedPassword, apiKey, isAdmin, freePlan?.id || 1);
-    console.log(`[AUTH] Registration success: ${username}. API Key generated. Admin: ${isAdmin}`);
+    const info = db.prepare("INSERT INTO users (username, full_name, email, password, api_key, is_admin, plan_id) VALUES (?, ?, ?, ?, ?, ?, ?)").run(
+      username, 
+      fullName, 
+      email, 
+      hashedPassword, 
+      apiKey, 
+      isAdmin, 
+      freePlan?.id || 1
+    );
+    
+    console.log(`[AUTH] Registration success: ${username}. ID: ${info.lastInsertRowid}`);
     res.json({ id: info.lastInsertRowid, username, apiKey, is_admin: isAdmin });
   } catch (e: any) {
-    console.error(`[AUTH] Registration failure: ${e.message}`);
+    console.error(`[AUTH] Registration error:`, e);
     if (e.message.includes('UNIQUE constraint failed: users.email')) {
       return res.status(400).json({ error: "Email already exists" });
     }
-    res.status(400).json({ error: "Username already exists" });
+    if (e.message.includes('UNIQUE constraint failed: users.username')) {
+      return res.status(400).json({ error: "Username already exists" });
+    }
+    res.status(500).json({ error: "Registration failed", details: e.message });
   }
 });
 
@@ -1150,6 +1171,15 @@ app.get("/api/apis/:id/stats", validateApiKey, (req, res) => {
     latencyData,
     errorDistribution
   });
+});
+
+// Global Error Handler
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error("[SERVER ERROR]", err);
+  if (res.headersSent) {
+    return next(err);
+  }
+  res.status(500).json({ error: "Internal server error", message: err.message });
 });
 
 // Vite middleware for development
