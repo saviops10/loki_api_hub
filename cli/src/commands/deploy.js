@@ -16,7 +16,8 @@ export const deployCommand = new Command('deploy')
     const spinner = ora('Deploying API configuration...').start();
     
     try {
-      const configData = JSON.parse(fs.readFileSync(options.file, 'utf8'));
+      const fileContent = await fs.promises.readFile(options.file, 'utf8');
+      const configData = JSON.parse(fileContent);
       
       const response = await api.post('/api/apis', configData);
       
