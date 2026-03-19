@@ -7,7 +7,19 @@ import crypto from "crypto";
 import fs from "fs";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
-import { initDB } from "./src/db/index.js";
+import { initDB, getDB, db, kv, r2 } from "./src/db/index.js";
+
+// Schemas
+import { LoginSchema, RegisterSchema } from "./src/schemas/auth.js";
+import { ApiSchema } from "./src/schemas/api.js";
+import { EndpointSchema } from "./src/schemas/endpoint.js";
+
+// Middlewares
+import { validateApiKey, checkOwnership, adminMiddleware } from "./src/middlewares/auth.js";
+import { rateLimitMiddleware } from "./src/middlewares/rateLimit.js";
+
+// Utils
+import { encrypt, decrypt, scrubData, globalErrorHandler } from "./src/utils/security.js";
 
 dotenv.config();
 
@@ -17,9 +29,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = 3000;
 
-// Database Initialization
-const db = initDB();
-db.pragma("journal_mode = WAL");
+
 
 async function initDatabase() {
   // Initialize Tables
@@ -139,13 +149,20 @@ async function initDatabase() {
       logs: ['latency']
     };
 
+    const allowedTables = ['apis', 'endpoints', 'users', 'logs'];
+
     for (const [table, columns] of Object.entries(tables)) {
+      if (!allowedTables.includes(table)) continue;
+      
+      // Use parameterized query for table info if possible, but PRAGMA usually doesn't support it.
+      // Since we use an allowlist, it's safe.
       const info = await db.query(`PRAGMA table_info(${table})`);
       const existingColumns = info.map(c => c.name);
       
       for (const col of columns) {
         if (!existingColumns.includes(col)) {
           console.log(`Adding column ${col} to table ${table}`);
+          // Column names are also from our static map, so safe.
           await db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} TEXT`);
         }
       }
@@ -179,6 +196,19 @@ async function initDatabase() {
 
 app.use(express.json());
 
+// Cloudflare Environment Middleware
+app.use(async (req, res, next) => {
+  const env = (req as any).env || (globalThis as any);
+  try {
+    await initDB(env);
+  } catch (e) {
+    console.error("Database initialization error in middleware:", e);
+  }
+  next();
+});
+
+app.use(rateLimitMiddleware);
+
 // Security Headers Middleware
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -189,160 +219,14 @@ app.use((req, res, next) => {
   next();
 });
 
-// Simple Rate Limiter
-const rateLimits = new Map<string, { count: number, reset: number }>();
-const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
-const MAX_REQUESTS = 100;
-
-app.use((req, res, next) => {
-  const ip = req.ip || 'unknown';
-  const now = Date.now();
-  const limit = rateLimits.get(ip);
-
-  if (limit && now < limit.reset) {
-    if (limit.count >= MAX_REQUESTS) {
-      return res.status(429).json({ error: "Too many requests. Please try again later." });
-    }
-    limit.count++;
-  } else {
-    rateLimits.set(ip, { count: 1, reset: now + RATE_LIMIT_WINDOW });
-  }
-  next();
-});
-
-// Security: Encryption helper
-const ENCRYPTION_SECRET = process.env.ENCRYPTION_KEY || 'smart-api-hub-default-secret-key-2024';
-const ENCRYPTION_KEY = crypto.createHash('sha256').update(ENCRYPTION_SECRET).digest();
-const IV_LENGTH = 16;
-
-function encrypt(text: string) {
-  const iv = crypto.randomBytes(IV_LENGTH);
-  const cipher = crypto.createCipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
-  let encrypted = cipher.update(text);
-  encrypted = Buffer.concat([encrypted, cipher.final()]);
-  return iv.toString('hex') + ':' + encrypted.toString('hex');
-}
-
-function decrypt(text: string) {
-  try {
-    const textParts = text.split(':');
-    if (textParts.length !== 2) return '{}';
-    const iv = Buffer.from(textParts.shift()!, 'hex');
-    const encryptedText = Buffer.from(textParts.join(':'), 'hex');
-    const decipher = crypto.createDecipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
-    let decrypted = decipher.update(encryptedText);
-    decrypted = Buffer.concat([decrypted, decipher.final()]);
-    return decrypted.toString();
-  } catch (e) {
-    console.error("Decryption failed:", e);
-    return '{}';
-  }
-}
-
-// Log Scrubber for security
-function scrubData(data: any): any {
-  if (typeof data !== 'object' || data === null) return data;
-  
-  const sensitiveKeys = ['password', 'token', 'access_token', 'apiKey', 'api_key', 'secret', 'authorization'];
-  const scrubbed = Array.isArray(data) ? [...data] : { ...data };
-  
-  for (const key in scrubbed) {
-    if (sensitiveKeys.some(sk => key.toLowerCase().includes(sk.toLowerCase()))) {
-      scrubbed[key] = '********';
-    } else if (typeof scrubbed[key] === 'object') {
-      scrubbed[key] = scrubData(scrubbed[key]);
-    }
-  }
-  return scrubbed;
-}
-
-// Zod Schemas
-const LoginSchema = z.object({
-  username: z.string().min(3),
-  password: z.string().min(6)
-});
-
-const RegisterSchema = z.object({
-  username: z.string().min(3, "Username must be at least 3 characters"),
-  fullName: z.string().min(3, "Full name must be at least 3 characters"),
-  email: z.string().email("Invalid email address"),
-  password: z.string()
-    .min(8, "Password must be at least 8 characters")
-    .regex(/[a-z]/, "Password must contain at least one lowercase letter")
-    .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
-    .regex(/\d/, "Password must contain at least one number")
-    .regex(/[@$!%*?&]/, "Password must contain at least one special character (@$!%*?&)"),
-  termsAccepted: z.boolean().refine(v => v === true, "You must accept the terms"),
-  privacyAccepted: z.boolean().refine(v => v === true, "You must accept the privacy policy")
-});
-
-const ApiSchema = z.object({
-  name: z.string().min(1),
-  baseUrl: z.string().url(),
-  authType: z.enum(['none', 'apikey', 'oauth2', 'basic']),
-  authConfig: z.record(z.string(), z.any()).optional(),
-  authEndpoint: z.string().optional(),
-  authUsername: z.string().optional(),
-  authPassword: z.string().optional(),
-  authPayloadTemplate: z.string().optional()
-});
-
-const EndpointSchema = z.object({
-  apiId: z.number(),
-  name: z.string().min(1),
-  path: z.string().min(1),
-  method: z.enum(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']),
-  groupName: z.string().optional(),
-  isFavorite: z.boolean().optional()
-});
+// Removed moved logic (Encryption, Scrubbing, Schemas, Middlewares)
 
 // API Routes
 app.get("/api/health", async (req, res) => {
   res.json({ status: "ok" });
 });
 
-// Middleware to validate API_KEY or Session
-const validateApiKey = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
-  const apiKey = req.headers['x-loki-api-key'];
-  const sessionToken = req.headers['x-loki-session-token'];
-
-  if (sessionToken) {
-    const session = await db.get("SELECT * FROM sessions WHERE token = ?", [sessionToken]) as any;
-    if (session) {
-      const lastActivity = new Date(session.last_activity);
-      const now = new Date();
-      if (now.getTime() - lastActivity.getTime() > 3600000) { // 1 hour
-        await db.run("DELETE FROM sessions WHERE token = ?", [sessionToken]);
-        return res.status(401).json({ error: "Session expired due to inactivity" });
-      }
-      await db.run("UPDATE sessions SET last_activity = CURRENT_TIMESTAMP WHERE token = ?", [sessionToken]);
-      (req as any).userId = session.user_id;
-      return next();
-    }
-  }
-
-  if (!apiKey) return res.status(401).json({ error: "Missing authentication" });
-
-  const user = await db.get("SELECT id FROM users WHERE api_key = ?", [apiKey]) as any;
-  if (!user) return res.status(403).json({ error: "Invalid API_KEY" });
-  
-  (req as any).userId = user.id;
-  next();
-};
-
-const checkOwnership = async (table: string, id: number, userId: number) => {
-  if (table === 'apis') {
-    const api = await db.get("SELECT user_id FROM apis WHERE id = ?", [id]) as any;
-    return api && api.user_id === userId;
-  }
-  if (table === 'endpoints') {
-    const ep = await db.get("SELECT api_id FROM endpoints WHERE id = ?", [id]) as any;
-    if (!ep) return false;
-    const api = await db.get("SELECT user_id FROM apis WHERE id = ?", [ep.api_id]) as any;
-    return api && api.user_id === userId;
-  }
-  return false;
-};
+// Removed moved middlewares
 
 // Auth Routes
 app.post("/api/auth/login", async (req, res) => {
@@ -371,7 +255,17 @@ app.post("/api/auth/login", async (req, res) => {
     console.log(`[AUTH] Login success: ${username}`);
     await db.run("UPDATE users SET failed_attempts = 0, lock_until = NULL WHERE id = ?", [user.id]);
     const sessionToken = crypto.randomBytes(32).toString('hex');
-    await db.run("INSERT INTO sessions (token, user_id) VALUES (?, ?)", [sessionToken, user.id]);
+    const sessionData = { token: sessionToken, user_id: user.id, last_activity: new Date().toISOString() };
+    
+    await db.run("INSERT INTO sessions (token, user_id, last_activity) VALUES (?, ?, ?)", [sessionToken, user.id, sessionData.last_activity]);
+    
+    if (kv) {
+      try {
+        await kv.put(sessionToken, JSON.stringify(sessionData), { expirationTtl: 3600 });
+      } catch (e) {
+        console.warn("[AUTH] Failed to store session in KV:", e);
+      }
+    }
     
     const plan = await db.get("SELECT * FROM plans WHERE id = ?", [user.plan_id]) as any;
     
@@ -464,28 +358,73 @@ app.post("/api/auth/register", async (req, res) => {
 app.delete("/api/auth/account", validateApiKey, async (req, res) => {
   const userId = (req as any).userId;
   try {
-    // Delete all related data sequentially (simulating transaction for now)
-    const apis = await db.query("SELECT id FROM apis WHERE user_id = ?", [userId]) as any[];
-    for (const api of apis) {
-      const endpoints = await db.query("SELECT id FROM endpoints WHERE api_id = ?", [api.id]) as any[];
-      for (const ep of endpoints) {
-        await db.run("DELETE FROM logs WHERE endpoint_id = ?", [ep.id]);
-      }
-      await db.run("DELETE FROM endpoints WHERE api_id = ?", [api.id]);
-    }
-    await db.run("DELETE FROM apis WHERE user_id = ?", [userId]);
-    await db.run("DELETE FROM users WHERE id = ?", [userId]);
+    console.log(`[AUTH] Deleting account for User ${userId}`);
     
+    // Use db.batch for atomic deletion across all related tables
+    await db.batch([
+      // 1. Delete Logs
+      {
+        sql: `
+          DELETE FROM logs 
+          WHERE endpoint_id IN (
+            SELECT e.id FROM endpoints e
+            JOIN apis a ON e.api_id = a.id
+            WHERE a.user_id = ?
+          )
+        `,
+        params: [userId]
+      },
+      // 2. Delete Endpoints
+      {
+        sql: `
+          DELETE FROM endpoints 
+          WHERE api_id IN (
+            SELECT id FROM apis WHERE user_id = ?
+          )
+        `,
+        params: [userId]
+      },
+      // 3. Delete APIs
+      {
+        sql: "DELETE FROM apis WHERE user_id = ?",
+        params: [userId]
+      },
+      // 4. Delete API Keys
+      {
+        sql: "DELETE FROM api_keys WHERE user_id = ?",
+        params: [userId]
+      },
+      // 5. Delete Sessions
+      {
+        sql: "DELETE FROM sessions WHERE user_id = ?",
+        params: [userId]
+      },
+      // 6. Delete User
+      {
+        sql: "DELETE FROM users WHERE id = ?",
+        params: [userId]
+      }
+    ]);
+    
+    console.log(`[AUTH] Account and all related data deleted atomically for User ${userId}`);
     res.json({ success: true });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    console.error(`[AUTH] Failed to delete account for User ${userId}:`, error);
+    res.status(500).json({ error: "Failed to delete account. Please contact support." });
   }
 });
 
 app.post("/api/auth/logout", async (req, res) => {
-  const sessionToken = req.headers['x-loki-session-token'];
+  const sessionToken = req.headers['x-loki-session-token'] as string;
   if (sessionToken) {
     await db.run("DELETE FROM sessions WHERE token = ?", [sessionToken]);
+    if (kv) {
+      try {
+        await kv.delete(sessionToken);
+      } catch (e) {
+        console.warn("[AUTH] Failed to delete session from KV:", e);
+      }
+    }
   }
   res.json({ success: true });
 });
@@ -553,9 +492,10 @@ app.post("/api/apis", validateApiKey, async (req, res) => {
     }
     const { name, baseUrl, authType, authConfig, authEndpoint, authUsername, authPassword, authPayloadTemplate } = validation.data;
 
+    const normalizedBaseUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/+$/, '') : `https://${baseUrl.replace(/\/+$/, '')}`;
     const encryptedConfig = encrypt(JSON.stringify(authConfig || {}));
     const info = await db.run("INSERT INTO apis (user_id, name, base_url, auth_type, auth_config, auth_endpoint, auth_username, auth_password, auth_payload_template) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", 
-      [userId, name, baseUrl, authType || 'none', encryptedConfig, authEndpoint, authUsername, authPassword, authPayloadTemplate]);
+      [userId, name, normalizedBaseUrl, authType || 'none', encryptedConfig, authEndpoint, authUsername, authPassword, authPayloadTemplate]);
     
     const apiId = Number(info.lastInsertRowid);
 
@@ -582,9 +522,10 @@ app.put("/api/apis/:id", validateApiKey, async (req, res) => {
     }
     const { name, baseUrl, authType, authConfig, authEndpoint, authUsername, authPassword, authPayloadTemplate } = validation.data;
     
+    const normalizedBaseUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/+$/, '') : `https://${baseUrl.replace(/\/+$/, '')}`;
     const encryptedConfig = encrypt(JSON.stringify(authConfig || {}));
     await db.run("UPDATE apis SET name = ?, base_url = ?, auth_type = ?, auth_config = ?, auth_endpoint = ?, auth_username = ?, auth_password = ?, auth_payload_template = ? WHERE id = ?", 
-      [name, baseUrl, authType, encryptedConfig, authEndpoint, authUsername, authPassword, authPayloadTemplate, id]);
+      [name, normalizedBaseUrl, authType, encryptedConfig, authEndpoint, authUsername, authPassword, authPayloadTemplate, id]);
     
     if (authEndpoint) {
       refreshApiToken(Number(id)).catch(err => console.error("Update refresh failed:", err));
@@ -627,13 +568,17 @@ async function refreshApiToken(apiId: number) {
   authEndpoint = authEndpoint.replace('{{username}}', encodeURIComponent(api.auth_username || ''));
   authEndpoint = authEndpoint.replace('{{password}}', encodeURIComponent(api.auth_password || ''));
 
-  // Ensure absolute URL
+  // Ensure absolute URL and protocol
   if (authEndpoint.startsWith('/')) {
-    const base = api.base_url.endsWith('/') ? api.base_url.slice(0, -1) : api.base_url;
+    const base = api.base_url.replace(/\/+$/, '');
     authEndpoint = `${base}${authEndpoint}`;
   } else if (!authEndpoint.startsWith('http')) {
-    const base = api.base_url.endsWith('/') ? api.base_url : `${api.base_url}/`;
-    authEndpoint = `${base}${authEndpoint}`;
+    const base = api.base_url.replace(/\/+$/, '');
+    authEndpoint = `${base}/${authEndpoint}`;
+  }
+  
+  if (!authEndpoint.startsWith('http')) {
+    authEndpoint = `https://${authEndpoint}`;
   }
 
   const tryRefresh = async (payload: any) => {
@@ -660,7 +605,12 @@ async function refreshApiToken(apiId: number) {
       }
       return await response.json();
     } catch (e: any) {
-      console.error(`[AUTH] Network error during refresh for API ${apiId}:`, e.message || e);
+      const isDnsError = e.code === 'ENOTFOUND' || (e.cause && (e.cause.code === 'ENOTFOUND' || e.cause.message?.includes('ENOTFOUND')));
+      if (isDnsError) {
+        console.error(`[AUTH] DNS Error: Could not resolve host for API ${apiId}. URL: ${authEndpoint}`);
+      } else {
+        console.error(`[AUTH] Network error during refresh for API ${apiId}:`, e.message || e);
+      }
       return null;
     }
   };
@@ -762,21 +712,57 @@ app.get("/api/export/:userId", validateApiKey, async (req, res) => {
   if (userId !== Number(req.params.userId)) {
     return res.status(403).json({ error: "Access denied" });
   }
-  const apis = await db.query("SELECT * FROM apis WHERE user_id = ?", [userId]) as any[];
   
-  const data = await Promise.all(apis.map(async api => {
-    const endpoints = await db.query("SELECT * FROM endpoints WHERE api_id = ?", [api.id]);
-    return {
-      ...api,
-      auth_config: JSON.parse(decrypt(api.auth_config)),
-      endpoints
-    };
+  // 1. Fetch all APIs for the user
+  const apis = await db.query("SELECT * FROM apis WHERE user_id = ?", [userId]) as any[];
+  if (apis.length === 0) {
+    return res.json({ message: "No data to export", data: [] });
+  }
+
+  // 2. Fetch all endpoints for these APIs in a single query
+  const apiIds = apis.map(api => api.id);
+  const placeholders = apiIds.map(() => "?").join(",");
+  const allEndpoints = await db.query(`SELECT * FROM endpoints WHERE api_id IN (${placeholders})`, apiIds) as any[];
+
+  // 3. Group endpoints by api_id
+  const endpointsByApiId = allEndpoints.reduce((acc, ep) => {
+    if (!acc[ep.api_id]) acc[ep.api_id] = [];
+    acc[ep.api_id].push(ep);
+    return acc;
+  }, {} as Record<number, any[]>);
+
+  // 4. Construct final data
+  const data = apis.map(api => ({
+    ...api,
+    auth_config: JSON.parse(decrypt(api.auth_config)),
+    endpoints: endpointsByApiId[api.id] || []
   }));
 
-  const fileName = `export_user_${userId}.json`;
-  await fs.promises.writeFile(fileName, JSON.stringify(data, null, 2));
+  const fileName = `export_user_${userId}_${Date.now()}.json`;
+  const dataStr = JSON.stringify(data, null, 2);
   
-  res.json({ message: "Data exported successfully", fileName, data });
+  // Try to save to R2 if available
+  if (r2) {
+    try {
+      await r2.put(fileName, dataStr);
+      console.log(`[EXPORT] Saved to R2: ${fileName}`);
+    } catch (err) {
+      console.error("[EXPORT] Failed to save to R2:", err);
+    }
+  }
+
+  // Fallback to local disk (might not persist in serverless)
+  try {
+    await fs.promises.writeFile(fileName, dataStr);
+  } catch (err) {
+    console.warn("[EXPORT] Could not write export file to disk:", err);
+  }
+  
+  res.json({ 
+    message: "Data exported successfully", 
+    fileName, 
+    data 
+  });
 });
 
 app.get("/api/endpoints/:apiId", validateApiKey, async (req, res) => {
@@ -857,8 +843,8 @@ app.delete("/api/endpoints/:id", validateApiKey, async (req, res) => {
 
 // Proxy Request with Auto-Refresh and 401 Retry Logic
 app.post("/api/proxy", validateApiKey, async (req, res) => {
+  const { apiId, endpointId, body, headers: customHeaders } = req.body;
   try {
-    const { apiId, endpointId, body, headers: customHeaders } = req.body;
     const userId = (req as any).userId;
     
     // Rate Limit Check
@@ -895,9 +881,12 @@ app.post("/api/proxy", validateApiKey, async (req, res) => {
     }
 
     const authConfig = JSON.parse(decrypt(api.auth_config));
-    const baseUrl = api.base_url.replace(/\/+$/, '');
+    let baseUrl = api.base_url.replace(/\/+$/, '');
+    if (!baseUrl.startsWith('http')) {
+      baseUrl = `https://${baseUrl}`;
+    }
     const path = endpoint.path.replace(/^\/+/, '');
-    let url = `${baseUrl}/${path}`;
+    let url = endpoint.path.startsWith('http') ? endpoint.path : `${baseUrl}/${path}`;
     
     // Append query params for GET requests
     const queryParams = { ...req.query, ...(body && typeof body === 'object' ? body : {}) };
@@ -1030,7 +1019,13 @@ app.post("/api/proxy", validateApiKey, async (req, res) => {
       headers: Object.fromEntries(response.headers.entries())
     });
   } catch (error: any) {
-    console.error("Proxy error:", error);
+    const isDnsError = error.code === 'ENOTFOUND' || (error.cause && (error.cause.code === 'ENOTFOUND' || error.cause.message?.includes('ENOTFOUND')));
+    if (isDnsError) {
+      console.error(`[PROXY] DNS Error: Could not resolve host for API ${apiId}.`);
+    } else {
+      console.error("Proxy error:", error);
+    }
+    
     const message = error.message || "Unknown proxy error";
     const cause = error.cause ? ` (Cause: ${error.cause.message || error.cause})` : "";
     res.status(500).json({ 
@@ -1041,20 +1036,6 @@ app.post("/api/proxy", validateApiKey, async (req, res) => {
 });
 
 // --- ADMIN ROUTES ---
-const adminMiddleware = async (req: any, res: any, next: any) => {
-  const sessionToken = req.headers['x-loki-session-token'];
-  if (!sessionToken) return res.status(401).json({ error: "Unauthorized" });
-
-  const session = await db.get("SELECT user_id FROM sessions WHERE token = ?", [sessionToken]) as any;
-  if (!session) return res.status(401).json({ error: "Invalid session" });
-
-  const user = await db.get("SELECT is_admin FROM users WHERE id = ?", [session.user_id]) as any;
-  if (!user || user.is_admin !== 1) return res.status(403).json({ error: "Forbidden: Admin access required" });
-
-  req.userId = session.user_id;
-  next();
-};
-
 app.get("/api/admin/users", adminMiddleware, async (req, res) => {
   const users = await db.query(`
     SELECT u.id, u.username, u.full_name, u.email, u.is_admin, u.request_count, p.name as plan_name 
@@ -1273,17 +1254,15 @@ app.get("/api/apis/:id/stats", validateApiKey, async (req, res) => {
 });
 
 // Global Error Handler
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error("[SERVER ERROR]", err);
-  if (res.headersSent) {
-    return next(err);
-  }
-  res.status(500).json({ error: "Internal server error", message: err.message });
-});
+app.use(globalErrorHandler);
 
 // Vite middleware for development
 async function startServer() {
+  // Initialize Database Adapter
+  await initDB();
+  
   await initDatabase();
+  
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
