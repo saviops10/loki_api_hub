@@ -10,7 +10,7 @@ import { LoadingSpinner, EmptyState } from '../../components/Feedback';
 import { ConfirmModal } from '../../components/Modal';
 import { ProfileMenu } from '../../components/ProfileMenu';
 import { LokiIcon } from '../../components/Branding';
-import { Terminal, Shield, Zap } from 'lucide-react';
+import { Terminal, Shield, Zap, RefreshCw } from 'lucide-react';
 
 const ApiKeyManager: React.FC<{ user: any, onRegenerateKey: () => void }> = ({ user, onRegenerateKey }) => {
   const { call, loading } = useApi();
@@ -93,8 +93,9 @@ const ApiKeyManager: React.FC<{ user: any, onRegenerateKey: () => void }> = ({ u
                 </div>
                 
                 <div className="flex flex-col gap-3">
-                  <Button variant="secondary" onClick={onRegenerateKey} isLoading={loading} className="w-full">
-                    🔄 Regenerate Primary Key
+                  <Button variant="secondary" onClick={onRegenerateKey} isLoading={loading} className="w-full flex items-center justify-center gap-2">
+                    <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+                    Regenerate Primary Key
                   </Button>
                   <p className="text-[10px] text-zinc-500 italic text-center">
                     Warning: Regenerating will invalidate your current CLI sessions.
@@ -275,8 +276,8 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpen
           </div>
 
           <div className="flex items-center gap-4">
-            <Button variant="ghost" onClick={fetchApis} className="hidden sm:flex">
-              <span className="text-lg">🔄</span>
+            <Button variant="ghost" onClick={fetchApis} className="hidden sm:flex hover:bg-loki-primary/10 group">
+              <RefreshCw size={18} className="text-loki-primary group-hover:rotate-180 transition-transform duration-500" />
             </Button>
             <ProfileMenu onOpenAdmin={onOpenAdmin} />
           </div>
@@ -292,14 +293,14 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpen
                   <option value="none">No Auth</option>
                   <option value="apikey">API Key</option>
                   <option value="oauth2">OAuth2</option>
-                  <option value="bearer">Bearer Token</option>
+                  <option value="basic">Basic Auth</option>
                 </Input>
                 
                 <div className="p-4 bg-zinc-950/50 rounded-2xl border border-loki-accent/20 space-y-4 shadow-lg shadow-loki-accent/5">
                   <p className="text-[10px] uppercase tracking-widest text-loki-accent font-black">Authentication Config</p>
                   <div className="space-y-4">
-                    <Input label="Client ID / API Key" name="apiKey" placeholder="ID or Key" />
-                    <Input label="Client Secret (Optional)" name="clientSecret" placeholder="Secret" />
+                    <Input label="Client ID / API Key" name="apiKey" defaultValue={editingApi?.auth_config?.apiKey} placeholder="ID or Key" />
+                    <Input label="Client Secret (Optional)" name="clientSecret" defaultValue={editingApi?.auth_config?.clientSecret} placeholder="Secret" />
                   </div>
                   <hr className="border-zinc-800" />
                   <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-black">Token Auto-Refresh (POST)</p>
@@ -392,13 +393,13 @@ export const Dashboard: React.FC<{ onSelectApi: (api: ApiConfig) => void, onOpen
                         <div className="flex gap-4">
                           <button 
                             onClick={(e) => { e.stopPropagation(); setEditingApi(api); }}
-                            className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-black hover:text-loki-primary transition-colors"
+                            className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-black hover:text-loki-primary transition-colors cursor-pointer"
                           >
                             Edit
                           </button>
                           <button 
                             onClick={(e) => { e.stopPropagation(); setDeleteApiId(api.id); }}
-                            className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-black hover:text-red-500 transition-colors"
+                            className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-black hover:text-red-500 transition-colors cursor-pointer"
                           >
                             Delete
                           </button>

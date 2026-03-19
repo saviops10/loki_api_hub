@@ -279,7 +279,7 @@ const RegisterSchema = z.object({
 const ApiSchema = z.object({
   name: z.string().min(1),
   baseUrl: z.string().url(),
-  authType: z.enum(['none', 'apikey', 'oauth2']),
+  authType: z.enum(['none', 'apikey', 'oauth2', 'basic']),
   authConfig: z.record(z.string(), z.any()).optional(),
   authEndpoint: z.string().optional(),
   authUsername: z.string().optional(),
@@ -621,17 +621,47 @@ async function refreshApiToken(apiId: number) {
   const api = db.prepare("SELECT * FROM apis WHERE id = ?").get(apiId) as any;
   if (!api || !api.auth_endpoint) return null;
 
+  // Replace placeholders in endpoint URL
+  let authEndpoint = api.auth_endpoint;
+  const urlHasPlaceholders = authEndpoint.includes('{{username}}') || authEndpoint.includes('{{password}}');
+  
+  authEndpoint = authEndpoint.replace('{{username}}', encodeURIComponent(api.auth_username || ''));
+  authEndpoint = authEndpoint.replace('{{password}}', encodeURIComponent(api.auth_password || ''));
+
+  // Ensure absolute URL
+  if (authEndpoint.startsWith('/')) {
+    const base = api.base_url.endsWith('/') ? api.base_url.slice(0, -1) : api.base_url;
+    authEndpoint = `${base}${authEndpoint}`;
+  } else if (!authEndpoint.startsWith('http')) {
+    const base = api.base_url.endsWith('/') ? api.base_url : `${api.base_url}/`;
+    authEndpoint = `${base}${authEndpoint}`;
+  }
+
   const tryRefresh = async (payload: any) => {
     try {
-      const response = await fetch(api.auth_endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+      // Use GET if we have credentials in URL and no payload
+      const hasPayload = payload && Object.keys(payload).length > 0;
+      const method = (urlHasPlaceholders && !hasPayload) ? 'GET' : 'POST';
 
-      if (!response.ok) return null;
+      const fetchOptions: any = {
+        method,
+        headers: { 'Content-Type': 'application/json' }
+      };
+      
+      if (method === 'POST') {
+        fetchOptions.body = JSON.stringify(payload || {});
+      }
+
+      const response = await fetch(authEndpoint, fetchOptions);
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'No error body');
+        console.warn(`[AUTH] Refresh attempt failed for API ${apiId} with status ${response.status}: ${errorText}`);
+        return null;
+      }
       return await response.json();
-    } catch (e) {
+    } catch (e: any) {
+      console.error(`[AUTH] Network error during refresh for API ${apiId}:`, e.message || e);
       return null;
     }
   };
@@ -641,8 +671,14 @@ async function refreshApiToken(apiId: number) {
     
     let data = null;
 
-    // Use dynamic template if available
-    if (api.auth_payload_template) {
+    // 1. Try with placeholders in URL if present
+    if (urlHasPlaceholders) {
+      console.log(`[AUTH] Using credentials in URL for API ${apiId}`);
+      data = await tryRefresh({});
+    }
+
+    // 2. Use dynamic template if available and no data yet
+    if (!data && api.auth_payload_template) {
       try {
         let template = api.auth_payload_template;
         template = template.replace('{{username}}', api.auth_username || '');
@@ -655,9 +691,9 @@ async function refreshApiToken(apiId: number) {
       }
     }
 
-    // Fallback to legacy logic if template failed or not provided
+    // 3. Fallback to legacy logic if still no data
     if (!data) {
-      // Try 'username' first (Telecall pattern as requested)
+      // Try 'username' first (Telecall pattern)
       data = await tryRefresh({ username: api.auth_username, password: api.auth_password });
       
       // If failed, try 'user' (Common pattern)
@@ -665,10 +701,16 @@ async function refreshApiToken(apiId: number) {
         console.log(`[AUTH] Refresh with 'username' failed for API ${apiId}, trying 'user'...`);
         data = await tryRefresh({ user: api.auth_username, password: api.auth_password });
       }
+
+      // If failed, try 'UserName' (Linksfield pattern)
+      if (!data) {
+        console.log(`[AUTH] Refresh with 'user' failed for API ${apiId}, trying 'UserName'...`);
+        data = await tryRefresh({ UserName: api.auth_username, Password: api.auth_password });
+      }
     }
 
     if (!data) {
-      console.error(`[AUTH] Refresh failed for API ${apiId} with both 'username' and 'user' fields.`);
+      console.error(`[AUTH] Refresh failed for API ${apiId} after trying all available methods.`);
       return null;
     }
 
@@ -768,6 +810,28 @@ app.post("/api/endpoints", validateApiKey, (req, res) => {
   }
 });
 
+app.put("/api/endpoints/:id", validateApiKey, (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const { id } = req.params;
+    if (!checkOwnership('endpoints', Number(id), userId)) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+    const validation = EndpointSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ error: "Invalid endpoint configuration", details: validation.error.format() });
+    }
+    const { name, path, method, isFavorite, groupName } = validation.data;
+    
+    db.prepare("UPDATE endpoints SET name = ?, path = ?, method = ?, is_favorite = ?, group_name = ? WHERE id = ?")
+      .run(name, path, method, isFavorite ? 1 : 0, groupName || 'Default', Number(id));
+    
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Internal server error" });
+  }
+});
+
 app.get("/api/endpoints/:id/logs", validateApiKey, (req, res) => {
   const userId = (req as any).userId;
   if (!checkOwnership('endpoints', Number(req.params.id), userId)) {
@@ -837,22 +901,32 @@ app.post("/api/proxy", validateApiKey, async (req, res) => {
     let url = `${baseUrl}/${path}`;
     
     // Append query params for GET requests
-    if (endpoint.method === 'GET' && body && typeof body === 'object') {
-      const qs = Object.entries(body)
+    const queryParams = { ...req.query, ...(body && typeof body === 'object' ? body : {}) };
+    if (endpoint.method === 'GET' && Object.keys(queryParams).length > 0) {
+      const qs = Object.entries(queryParams)
         .filter(([_, v]) => v !== undefined && v !== null && v !== '')
         .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
         .join('&');
-      if (qs) url += (url.includes('?') ? '&' : '?') + qs;
+      if (qs) {
+        const separator = url.includes('?') ? (url.endsWith('?') || url.endsWith('&') ? '' : '&') : '?';
+        url += separator + qs;
+        console.log(`[PROXY] Appended query params: ${qs}`);
+      }
     }
     
     const executeRequest = async (tokenOverride?: string) => {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
+      const headers: any = {
         'Accept': 'application/json',
         ...customHeaders
       };
 
+      // Only add Content-Type for requests with body
+      if (['POST', 'PUT', 'PATCH'].includes(endpoint.method)) {
+        headers['Content-Type'] = 'application/json';
+      }
+
       let finalBody = body ? { ...body } : {};
+      let finalUrl = url;
 
       // Apply Auth
       if (api.auth_type === 'apikey' && authConfig.apiKey) {
@@ -866,10 +940,27 @@ app.post("/api/proxy", validateApiKey, async (req, res) => {
             : `Bearer ${cleanToken}`;
           headers['Authorization'] = bearerToken;
         }
+      } else if (api.auth_type === 'basic' && api.auth_username && api.auth_password) {
+        const credentials = Buffer.from(`${api.auth_username}:${api.auth_password}`).toString('base64');
+        headers['Authorization'] = `Basic ${credentials}`;
       } else if (api.auth_type === 'none') {
-        // If "No Auth" but credentials provided, append to body as per user request
-        if (authConfig.apiKey) finalBody.UserName = authConfig.apiKey;
-        if (authConfig.clientSecret) finalBody.Password = authConfig.clientSecret;
+        // If "No Auth" but credentials provided, append to body or query string
+        if (authConfig.apiKey) {
+          if (endpoint.method === 'GET') {
+            const separator = finalUrl.includes('?') ? (finalUrl.endsWith('?') || finalUrl.endsWith('&') ? '' : '&') : '?';
+            finalUrl += `${separator}UserName=${encodeURIComponent(authConfig.apiKey)}`;
+          } else {
+            finalBody.UserName = authConfig.apiKey;
+          }
+        }
+        if (authConfig.clientSecret) {
+          if (endpoint.method === 'GET') {
+            const separator = finalUrl.includes('?') ? (finalUrl.endsWith('?') || finalUrl.endsWith('&') ? '' : '&') : '?';
+            finalUrl += `${separator}Password=${encodeURIComponent(authConfig.clientSecret)}`;
+          } else {
+            finalBody.Password = authConfig.clientSecret;
+          }
+        }
       }
 
       const fetchOptions: any = {
@@ -881,7 +972,8 @@ app.post("/api/proxy", validateApiKey, async (req, res) => {
         fetchOptions.body = JSON.stringify(finalBody);
       }
 
-      const response = await fetch(url, fetchOptions);
+      console.log(`[PROXY] Executing ${endpoint.method} to: ${finalUrl}`);
+      const response = await fetch(finalUrl, fetchOptions);
       return response;
     };
 
@@ -895,11 +987,13 @@ app.post("/api/proxy", validateApiKey, async (req, res) => {
     }
 
     // 2. Execute request
-    console.log(`[PROXY] Final URL: ${url}`);
     const startTime = Date.now();
     let response = await executeRequest(currentToken);
     const endTime = Date.now();
     const latency = endTime - startTime;
+
+    // Log the actual URL called for debugging
+    console.log(`[PROXY] ${endpoint.method} Response: ${response.status} from ${url}`);
 
     // 3. Handle 401: Refresh token and retry once
     if (response.status === 401 && api.auth_endpoint) {
@@ -925,7 +1019,7 @@ app.post("/api/proxy", validateApiKey, async (req, res) => {
     }
 
     db.prepare("INSERT INTO logs (endpoint_id, status, response_body, latency) VALUES (?, ?, ?, ?)")
-      .run(endpoint.id, response.status, responseBodyStr, latency);
+      .run(endpoint.id, response.status, responseBodyStr, Number(latency));
 
     // Increment request count
     db.prepare("UPDATE users SET request_count = request_count + 1 WHERE id = ?").run(userId);
@@ -938,7 +1032,12 @@ app.post("/api/proxy", validateApiKey, async (req, res) => {
     });
   } catch (error: any) {
     console.error("Proxy error:", error);
-    res.status(500).json({ error: error.message });
+    const message = error.message || "Unknown proxy error";
+    const cause = error.cause ? ` (Cause: ${error.cause.message || error.cause})` : "";
+    res.status(500).json({ 
+      error: `${message}${cause}`,
+      details: error.stack
+    });
   }
 });
 
@@ -1151,15 +1250,15 @@ app.get("/api/apis/:id/stats", validateApiKey, (req, res) => {
   }
 
   const total = logs.length;
-  const success = logs.filter(l => l.status >= 200 && l.status < 300).length;
+  const success = logs.filter(l => Number(l.status) >= 200 && Number(l.status) < 300).length;
   const successRate = Math.round((success / total) * 100);
-  const latencies = logs.map(l => l.latency || 0).filter(l => l > 0);
+  const latencies = logs.map(l => Number(l.latency) || 0).filter(l => l > 0);
   const avgLatency = latencies.length > 0 ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length) : 0;
   const maxLatency = latencies.length > 0 ? Math.max(...latencies) : 0;
 
   const latencyData = logs.slice(0, 20).reverse().map(l => ({
     time: new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    latency: l.latency || 0
+    latency: Number(l.latency) || 0
   }));
 
   const errorCounts: Record<string, number> = {};

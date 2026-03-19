@@ -14,7 +14,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   BarChart, Bar, Cell, PieChart, Pie
 } from 'recharts';
-import { Code, BarChart3, Activity, Terminal, Shield, Zap } from 'lucide-react';
+import { Code, BarChart3, Activity, Terminal, Shield, Zap, GitFork, Edit2, RefreshCw } from 'lucide-react';
 
 export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ api: initialApi, onBack }) => {
   const { showToast } = useApp();
@@ -27,6 +27,7 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
   const [endpointLogs, setEndpointLogs] = useState<Record<number, Log[]>>({});
   const [endpointParams, setEndpointParams] = useLocalStorage<Record<number, { key: string, value: string }[]>>('smart_api_hub_endpoint_params', {});
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [editingEndpoint, setEditingEndpoint] = useState<Endpoint | null>(null);
   const [isRefreshingToken, setIsRefreshingToken] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'endpoints' | 'analytics'>('endpoints');
@@ -97,14 +98,18 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
       isFavorite: formData.get('isFavorite') === 'on',
     };
 
-    const result = await call('/api/endpoints', {
-      method: 'POST',
+    const url = editingEndpoint ? `/api/endpoints/${editingEndpoint.id}` : '/api/endpoints';
+    const method = editingEndpoint ? 'PUT' : 'POST';
+
+    const result = await call(url, {
+      method,
       body: JSON.stringify(payload),
     });
 
     if (result) {
-      showToast('Endpoint added!', 'success');
+      showToast(editingEndpoint ? 'Endpoint updated!' : 'Endpoint added!', 'success');
       fetchEndpoints();
+      setEditingEndpoint(null);
       (e.target as HTMLFormElement).reset();
     }
   };
@@ -223,14 +228,18 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
                   className="p-2 hover:bg-zinc-800 rounded-xl text-loki-primary transition-all disabled:opacity-50"
                   title="Refresh Token"
                 >
-                  {isRefreshingToken ? '⌛' : '🔄'}
+                  {isRefreshingToken ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-4 h-4" />
+                  )}
                 </button>
               </div>
             )}
             <div className="hidden lg:flex flex-col items-end gap-1 mr-4">
               <span className="text-[9px] uppercase tracking-[0.2em] font-black text-zinc-600">Authentication</span>
               <span className="bg-loki-primary/10 text-loki-accent px-3 py-1 rounded-full border border-loki-primary/20 text-[10px] font-black uppercase">
-                {api.auth_type}
+                {api.auth_type === 'basic' ? 'Basic Auth' : api.auth_type}
               </span>
             </div>
             <ProfileMenu />
@@ -239,22 +248,30 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <aside className="lg:col-span-4 space-y-6">
-            <Card title="Add Endpoint">
+            <Card title={editingEndpoint ? "Edit Endpoint" : "Add Endpoint"}>
               <form onSubmit={handleAddEndpoint} className="space-y-4">
-                <Input label="Name" name="name" placeholder="e.g. Get Users" required />
-                <Input label="Group" name="groupName" placeholder="e.g. Auth, Users" />
-                <Input label="Path" name="path" placeholder="/v1/users" required />
-                <Input label="Method" name="method" as="select">
+                <Input label="Name" name="name" defaultValue={editingEndpoint?.name} placeholder="e.g. Get Users" required />
+                <Input label="Group" name="groupName" defaultValue={editingEndpoint?.group_name} placeholder="e.g. Auth, Users" />
+                <Input label="Path" name="path" defaultValue={editingEndpoint?.path} placeholder="/v1/users" required />
+                <Input label="Method" name="method" defaultValue={editingEndpoint?.method} as="select">
                   <option value="GET">GET</option>
                   <option value="POST">POST</option>
                   <option value="PUT">PUT</option>
                   <option value="DELETE">DELETE</option>
+                  <option value="PATCH">PATCH</option>
                 </Input>
                 <label className="flex items-center gap-3 p-3 bg-zinc-900/50 rounded-xl border border-zinc-800 cursor-pointer hover:border-zinc-700 transition-all">
-                  <input name="isFavorite" type="checkbox" className="w-4 h-4 accent-loki-primary rounded border-zinc-700 bg-zinc-800" />
+                  <input name="isFavorite" type="checkbox" defaultChecked={editingEndpoint?.is_favorite === 1} className="w-4 h-4 accent-loki-primary rounded border-zinc-700 bg-zinc-800" />
                   <span className="text-sm text-zinc-400 font-medium">Mark as Favorite</span>
                 </label>
-                <Button type="submit" className="w-full" isLoading={loading}>Create Endpoint</Button>
+                <div className="flex gap-2">
+                  {editingEndpoint && (
+                    <Button variant="ghost" className="flex-1" onClick={() => setEditingEndpoint(null)}>Cancel</Button>
+                  )}
+                  <Button type="submit" className="flex-1" isLoading={loading}>
+                    {editingEndpoint ? 'Update Endpoint' : 'Create Endpoint'}
+                  </Button>
+                </div>
               </form>
             </Card>
           </aside>
@@ -415,13 +432,20 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
                                 <p className="text-xs text-zinc-500 font-mono mt-0.5">{ep.path}</p>
                               </div>
                             </div>
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2">
+                              <button 
+                                onClick={() => setEditingEndpoint(ep)}
+                                className="w-10 h-10 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl flex items-center justify-center text-zinc-400 hover:text-loki-primary transition-all group cursor-pointer"
+                                title="Edit"
+                              >
+                                <Edit2 size={16} className="group-hover:scale-110 transition-transform" />
+                              </button>
                               <button 
                                 onClick={() => handleDuplicateEndpoint(ep.id)}
-                                className="text-zinc-600 hover:text-loki-primary text-[10px] font-black transition-colors uppercase tracking-widest"
-                                title="Duplicate"
+                                className="w-10 h-10 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl flex items-center justify-center text-zinc-400 hover:text-loki-primary transition-all group cursor-pointer"
+                                title="Duplicate (Fork)"
                               >
-                                📋
+                                <GitFork size={16} className="group-hover:scale-110 transition-transform" />
                               </button>
                               <Button 
                                 onClick={() => {
@@ -429,16 +453,16 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
                                   setActiveEndpointTab('params');
                                 }}
                                 variant="secondary"
-                                size="sm"
-                                className="border-loki-accent/30 hover:border-loki-accent/50"
+                                className="h-10 px-6 border-loki-accent/30 hover:border-loki-accent/50"
                               >
                                 OPEN
                               </Button>
                               <button 
                                 onClick={() => setDeleteId(ep.id)}
-                                className="text-zinc-600 hover:text-red-400 text-xs font-black transition-colors uppercase tracking-widest"
+                                className="w-10 h-10 bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 rounded-xl flex items-center justify-center text-zinc-600 hover:text-red-500 transition-all cursor-pointer"
+                                title="Delete"
                               >
-                                Delete
+                                <span className="text-lg">×</span>
                               </button>
                             </div>
                           </div>
@@ -689,7 +713,17 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
                             </div>
                           </div>
                           <button 
-                            onClick={() => setTestResults(prev => ({ ...prev, [selectedEndpoint.id]: { status: log.status, data: JSON.parse(log.response_body), timestamp: new Date(log.timestamp) } }))}
+                            onClick={() => {
+                              setTestResults(prev => ({ 
+                                ...prev, 
+                                [selectedEndpoint.id]: { 
+                                  status: log.status, 
+                                  data: JSON.parse(log.response_body), 
+                                  timestamp: new Date(log.timestamp) 
+                                } 
+                              }));
+                              setActiveEndpointTab('payload');
+                            }}
                             className="text-[10px] text-loki-primary hover:text-loki-accent font-black uppercase tracking-widest"
                           >
                             View

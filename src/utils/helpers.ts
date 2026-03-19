@@ -11,7 +11,10 @@ export const generateCurl = (api: ApiConfig, ep: Endpoint, params: { key: string
       .filter(p => p.key && p.value)
       .map(p => `${encodeURIComponent(p.key)}=${encodeURIComponent(p.value)}`)
       .join('&');
-    if (qs) url += `?${qs}`;
+    if (qs) {
+      const separator = url.includes('?') ? (url.endsWith('?') || url.endsWith('&') ? '' : '&') : '?';
+      url += separator + qs;
+    }
   }
 
   let curl = `curl -X ${ep.method} "${url}"`;
@@ -23,7 +26,10 @@ export const generateCurl = (api: ApiConfig, ep: Endpoint, params: { key: string
     curl += ` \\\n  -H "Authorization: Bearer {{token_api_${api.id}}}"`;
   }
   curl += ` \\\n  -H "accept: application/json"`;
-  curl += ` \\\n  -H "Content-Type: application/json"`;
+  
+  if (ep.method !== 'GET') {
+    curl += ` \\\n  -H "Content-Type: application/json"`;
+  }
 
   // Body params for non-GET
   if (params.length > 0 && ep.method !== 'GET') {
@@ -39,11 +45,26 @@ export const generateSnippet = (lang: 'js' | 'python' | 'go', api: ApiConfig, ep
   const path = ep.path.replace(/^\/+/, '');
   let url = `${baseUrl}/${path}`;
   
+  // Add query params for GET
+  if (ep.method === 'GET' && params.length > 0) {
+    const qs = params
+      .filter(p => p.key && p.value)
+      .map(p => `${encodeURIComponent(p.key)}=${encodeURIComponent(p.value)}`)
+      .join('&');
+    if (qs) {
+      const separator = url.includes('?') ? (url.endsWith('?') || url.endsWith('&') ? '' : '&') : '?';
+      url += separator + qs;
+    }
+  }
+  
   const bodyObj = params.reduce((acc, curr) => ({ ...acc, [curr.key]: curr.value }), {});
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
     'Accept': 'application/json'
   };
+
+  if (ep.method !== 'GET') {
+    headers['Content-Type'] = 'application/json';
+  }
 
   if (api.auth_type === 'apikey') {
     headers['X-API-Key'] = 'YOUR_API_KEY';

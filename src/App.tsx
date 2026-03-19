@@ -8,11 +8,13 @@ import { AdminPanel } from './features/admin/AdminPanel';
 import { LandingPage } from './features/marketing/LandingPage';
 import { AboutPage } from './features/marketing/AboutPage';
 import { PlansPage } from './features/marketing/PlansPage';
+import { TermsPage } from './features/marketing/TermsPage';
+import { PrivacyPage } from './features/marketing/PrivacyPage';
 import { ApiConfig } from './types';
 
 const AppContent: React.FC = () => {
   const { user } = useApp();
-  const [view, setView] = useState<'landing' | 'about' | 'plans' | 'login' | 'register' | 'dashboard' | 'api-detail' | 'admin'>('landing');
+  const [view, setView] = useState<'landing' | 'about' | 'plans' | 'terms' | 'privacy' | 'login' | 'register' | 'dashboard' | 'api-detail' | 'admin'>('landing');
   const [selectedApi, setSelectedApi] = useState<ApiConfig | null>(null);
 
   // Simple routing logic
@@ -23,10 +25,14 @@ const AppContent: React.FC = () => {
         onRegister={() => setView('register')}
         onAbout={() => setView('about')} 
         onPlans={() => setView('plans')} 
+        onTerms={() => setView('terms')}
+        onPrivacy={() => setView('privacy')}
       />
     );
     if (view === 'about') return <AboutPage onBack={() => setView('landing')} />;
     if (view === 'plans') return <PlansPage onBack={() => setView('landing')} />;
+    if (view === 'terms') return <TermsPage onBack={() => setView('landing')} />;
+    if (view === 'privacy') return <PrivacyPage onBack={() => setView('landing')} />;
 
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">

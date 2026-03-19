@@ -3,7 +3,14 @@ import { motion } from 'motion/react';
 import { Button } from '../../components/Button';
 import { LokiIcon } from '../../components/Branding';
 
-export const LandingPage: React.FC<{ onGetStarted: () => void, onRegister: () => void, onAbout: () => void, onPlans: () => void }> = ({ onGetStarted, onRegister, onAbout, onPlans }) => {
+export const LandingPage: React.FC<{ 
+  onGetStarted: () => void, 
+  onRegister: () => void, 
+  onAbout: () => void, 
+  onPlans: () => void,
+  onTerms: () => void,
+  onPrivacy: () => void
+}> = ({ onGetStarted, onRegister, onAbout, onPlans, onTerms, onPrivacy }) => {
   const [selectedPlan, setSelectedPlan] = React.useState('Business');
 
   return (
@@ -52,7 +59,7 @@ export const LandingPage: React.FC<{ onGetStarted: () => void, onRegister: () =>
             <div className="flex flex-wrap gap-3">
               <span className="text-[10px] px-3 py-1 rounded-full border border-white/10 text-zinc-400 bg-white/5">▶ Reduz integrações de semanas para minutos</span>
               <span className="text-[10px] px-3 py-1 rounded-full border border-white/10 text-zinc-400 bg-white/5">🔐 Gestão inteligente de chaves e tokens</span>
-              <span className="text-[10px] px-3 py-1 rounded-full border border-white/10 text-zinc-400 bg-white/5">👨‍💻 Feito para Devs, TI e Diretoria</span>
+              <span className="text-[10px] px-3 py-1 rounded-full border border-white/10 text-zinc-400 bg-white/5">👨‍💻 Feito sob medida para você!</span>
             </div>
 
             <div className="flex flex-wrap gap-4 pt-4">
@@ -371,10 +378,10 @@ export const LandingPage: React.FC<{ onGetStarted: () => void, onRegister: () =>
 
         {/* Footer */}
         <footer className="pt-12 flex flex-col sm:flex-row justify-between items-center gap-6 text-[10px] text-zinc-500 font-bold uppercase tracking-widest border-t border-white/5">
-          <div>© {new Date().getFullYear()} Loki API Hub. Todos os direitos reservados.</div>
+          <div>© {new Date().getFullYear()} Loki API Hub. All rights reserved.</div>
           <div className="flex gap-6">
-            <a href="#" className="hover:text-loki-accent transition-colors">Termos de uso</a>
-            <a href="#" className="hover:text-loki-accent transition-colors">Política de privacidade</a>
+            <button onClick={onTerms} className="hover:text-loki-accent transition-colors uppercase">Terms of Use</button>
+            <button onClick={onPrivacy} className="hover:text-loki-accent transition-colors uppercase">Privacy Policy</button>
           </div>
         </footer>
       </div>
