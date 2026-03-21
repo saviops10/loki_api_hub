@@ -9,9 +9,10 @@ export const validateApiKey = async (req: Request, res: Response, next: NextFunc
     let session: any = null;
     
     // Try KV first if available
-    if (kv) {
+    const kvInstance = getKV();
+    if (kvInstance) {
       try {
-        const kvData = await kv.get(sessionToken);
+        const kvData = await kvInstance.get(sessionToken);
         if (kvData) {
           session = JSON.parse(kvData);
         }
@@ -25,9 +26,9 @@ export const validateApiKey = async (req: Request, res: Response, next: NextFunc
       session = await db.get("SELECT * FROM sessions WHERE token = ?", [sessionToken]) as any;
       
       // If found in DB, sync to KV for next time
-      if (session && kv) {
+      if (session && kvInstance) {
         try {
-          await kv.put(sessionToken, JSON.stringify(session), { expirationTtl: 3600 });
+          await kvInstance.put(sessionToken, JSON.stringify(session), { expirationTtl: 3600 });
         } catch (e) {
           console.warn("[AUTH] Failed to sync session to KV:", e);
         }
@@ -39,16 +40,16 @@ export const validateApiKey = async (req: Request, res: Response, next: NextFunc
       const now = new Date();
       if (now.getTime() - lastActivity.getTime() > 3600000) { // 1 hour
         await db.run("DELETE FROM sessions WHERE token = ?", [sessionToken]);
-        if (kv) await kv.delete(sessionToken);
+        if (kvInstance) await kvInstance.delete(sessionToken);
         return res.status(401).json({ error: "Session expired due to inactivity" });
       }
       
       // Update last activity
       const updatedActivity = new Date().toISOString();
       await db.run("UPDATE sessions SET last_activity = ? WHERE token = ?", [updatedActivity, sessionToken]);
-      if (kv) {
+      if (kvInstance) {
         session.last_activity = updatedActivity;
-        await kv.put(sessionToken, JSON.stringify(session), { expirationTtl: 3600 });
+        await kvInstance.put(sessionToken, JSON.stringify(session), { expirationTtl: 3600 });
       }
       
       (req as any).userId = session.user_id;
@@ -81,16 +82,33 @@ export const checkOwnership = async (table: string, id: number, userId: number) 
 };
 
 export const adminMiddleware = async (req: any, res: any, next: any) => {
-  const db = getDB();
   const sessionToken = req.headers['x-loki-session-token'];
   if (!sessionToken) return res.status(401).json({ error: "Unauthorized" });
 
-  const session = await db.get("SELECT user_id FROM sessions WHERE token = ?", [sessionToken]) as any;
-  if (!session) return res.status(401).json({ error: "Invalid session" });
+  let userId = null;
+  const kvInstance = getKV();
+  
+  if (kvInstance) {
+    try {
+      const kvData = await kvInstance.get(sessionToken);
+      if (kvData) {
+        const session = JSON.parse(kvData);
+        userId = session.user_id;
+      }
+    } catch (e) {
+      console.error("[AUTH] KV session lookup failed in adminMiddleware:", e);
+    }
+  }
 
-  const user = await db.get("SELECT is_admin FROM users WHERE id = ?", [session.user_id]) as any;
+  if (!userId) {
+    const session = await db.get("SELECT user_id FROM sessions WHERE token = ?", [sessionToken]) as any;
+    if (!session) return res.status(401).json({ error: "Invalid session" });
+    userId = session.user_id;
+  }
+
+  const user = await db.get("SELECT is_admin FROM users WHERE id = ?", [userId]) as any;
   if (!user || user.is_admin !== 1) return res.status(403).json({ error: "Forbidden: Admin access required" });
 
-  req.userId = session.user_id;
+  req.userId = userId;
   next();
 };

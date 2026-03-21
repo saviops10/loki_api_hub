@@ -5,6 +5,7 @@ export interface DatabaseAdapter {
   exec(sql: string): Promise<void>;
   pragma(sql: string): void;
   batch(statements: { sql: string; params?: any[] }[]): Promise<void>;
+  getType(): string;
 }
 
 export interface KVAdapter {
@@ -65,6 +66,10 @@ class SQLiteAdapter implements DatabaseAdapter {
     });
     transaction(statements);
   }
+
+  getType(): string {
+    return "SQLite (Local)";
+  }
 }
 
 class D1Adapter implements DatabaseAdapter {
@@ -95,6 +100,10 @@ class D1Adapter implements DatabaseAdapter {
   async batch(statements: { sql: string; params?: any[] }[]): Promise<void> {
     const d1Statements = statements.map(s => this.d1.prepare(s.sql).bind(...(s.params || [])));
     await this.d1.batch(d1Statements);
+  }
+
+  getType(): string {
+    return "Cloudflare D1";
   }
 }
 
@@ -158,6 +167,15 @@ export const getDB = () => {
 
 export const getKV = () => kvInstance;
 export const getR2 = () => r2Instance;
+
+export const getStatus = () => {
+  return {
+    database: dbInstance ? dbInstance.getType() : "Not Initialized",
+    kv: kvInstance ? "Active (Cloudflare SESSION)" : "Inactive (Local Fallback)",
+    r2: r2Instance ? "Active (Cloudflare PAYLOADS)" : "Inactive (Local Fallback)",
+    isCloudflare: (globalThis as any).CF_PAGES === '1' || !!(globalThis as any).__cf_pages_shared_data
+  };
+};
 
 // Proxies for easier access
 export const db: DatabaseAdapter = new Proxy({} as DatabaseAdapter, {

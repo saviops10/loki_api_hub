@@ -40,11 +40,16 @@ export function decrypt(text: string): string {
 export function scrubData(data: any): any {
   if (typeof data !== 'object' || data === null) return data;
   
-  const sensitiveKeys = ['password', 'token', 'access_token', 'apiKey', 'api_key', 'secret', 'authorization'];
+  const sensitiveKeys = [
+    'password', 'token', 'access_token', 'apiKey', 'api_key', 'secret', 
+    'authorization', 'client_secret', 'refresh_token', 'cvv', 'card_number',
+    'cpf', 'cnpj', 'email', 'phone', 'address'
+  ];
   const scrubbed = Array.isArray(data) ? [...data] : { ...data };
   
   for (const key in scrubbed) {
-    if (sensitiveKeys.some(sk => key.toLowerCase().includes(sk.toLowerCase()))) {
+    const lowerKey = key.toLowerCase();
+    if (sensitiveKeys.some(sk => lowerKey.includes(sk.toLowerCase()))) {
       scrubbed[key] = '********';
     } else if (typeof scrubbed[key] === 'object') {
       scrubbed[key] = scrubData(scrubbed[key]);

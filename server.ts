@@ -7,7 +7,7 @@ import crypto from "crypto";
 import fs from "fs";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
-import { initDB, getDB, db, kv, r2 } from "./src/db/index.js";
+import { initDB, getDB, getKV, getR2, db, kv, r2, getStatus } from "./src/db/index.js";
 
 // Schemas
 import { LoginSchema, RegisterSchema } from "./src/schemas/auth.js";
@@ -28,6 +28,45 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = 3000;
+
+// Circuit Breaker State
+const circuitBreakers: Record<number, { failures: number, lastFailure: number, status: 'OPEN' | 'CLOSED' | 'HALF_OPEN' }> = {};
+const FAILURE_THRESHOLD = 5;
+const COOLDOWN_PERIOD = 60 * 1000; // 1 minute
+
+function checkCircuitBreaker(apiId: number): boolean {
+  const cb = circuitBreakers[apiId];
+  if (!cb || cb.status === 'CLOSED') return true;
+
+  if (cb.status === 'OPEN') {
+    if (Date.now() - cb.lastFailure > COOLDOWN_PERIOD) {
+      cb.status = 'HALF_OPEN';
+      console.log(`[CIRCUIT] API ${apiId} entering HALF_OPEN state.`);
+      return true;
+    }
+    return false;
+  }
+  return true; // HALF_OPEN allows one request
+}
+
+function recordApiSuccess(apiId: number) {
+  if (circuitBreakers[apiId]) {
+    circuitBreakers[apiId] = { failures: 0, lastFailure: 0, status: 'CLOSED' };
+  }
+}
+
+function recordApiFailure(apiId: number) {
+  if (!circuitBreakers[apiId]) {
+    circuitBreakers[apiId] = { failures: 1, lastFailure: Date.now(), status: 'CLOSED' };
+  } else {
+    circuitBreakers[apiId].failures += 1;
+    circuitBreakers[apiId].lastFailure = Date.now();
+    if (circuitBreakers[apiId].failures >= FAILURE_THRESHOLD) {
+      circuitBreakers[apiId].status = 'OPEN';
+      console.warn(`[CIRCUIT] API ${apiId} circuit OPENED due to ${FAILURE_THRESHOLD} failures.`);
+    }
+  }
+}
 
 
 
@@ -226,6 +265,31 @@ app.get("/api/health", async (req, res) => {
   res.json({ status: "ok" });
 });
 
+app.get("/api/health/status", async (req, res) => {
+  try {
+    const status = getStatus();
+    let dbPing = "Unknown";
+    try {
+      await db.get("SELECT 1");
+      dbPing = "Connected";
+    } catch (e: any) {
+      dbPing = `Error: ${e.message}`;
+    }
+
+    res.json({
+      status: "ok",
+      environment: process.env.NODE_ENV,
+      adapters: {
+        ...status,
+        dbConnection: dbPing
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (e: any) {
+    res.status(500).json({ status: "error", message: e.message });
+  }
+});
+
 // Removed moved middlewares
 
 // Auth Routes
@@ -259,9 +323,10 @@ app.post("/api/auth/login", async (req, res) => {
     
     await db.run("INSERT INTO sessions (token, user_id, last_activity) VALUES (?, ?, ?)", [sessionToken, user.id, sessionData.last_activity]);
     
-    if (kv) {
+    const kvInstance = getKV();
+    if (kvInstance) {
       try {
-        await kv.put(sessionToken, JSON.stringify(sessionData), { expirationTtl: 3600 });
+        await kvInstance.put(sessionToken, JSON.stringify(sessionData), { expirationTtl: 3600 });
       } catch (e) {
         console.warn("[AUTH] Failed to store session in KV:", e);
       }
@@ -418,9 +483,10 @@ app.post("/api/auth/logout", async (req, res) => {
   const sessionToken = req.headers['x-loki-session-token'] as string;
   if (sessionToken) {
     await db.run("DELETE FROM sessions WHERE token = ?", [sessionToken]);
-    if (kv) {
+    const kvInstance = getKV();
+    if (kvInstance) {
       try {
-        await kv.delete(sessionToken);
+        await kvInstance.delete(sessionToken);
       } catch (e) {
         console.warn("[AUTH] Failed to delete session from KV:", e);
       }
@@ -608,6 +674,10 @@ async function refreshApiToken(apiId: number) {
       const isDnsError = e.code === 'ENOTFOUND' || (e.cause && (e.cause.code === 'ENOTFOUND' || e.cause.message?.includes('ENOTFOUND')));
       if (isDnsError) {
         console.error(`[AUTH] DNS Error: Could not resolve host for API ${apiId}. URL: ${authEndpoint}`);
+        // Throw a specific error to stop retrying
+        const dnsError = new Error(`DNS Error: ${authEndpoint}`);
+        (dnsError as any).isDnsError = true;
+        throw dnsError;
       } else {
         console.error(`[AUTH] Network error during refresh for API ${apiId}:`, e.message || e);
       }
@@ -620,42 +690,50 @@ async function refreshApiToken(apiId: number) {
     
     let data = null;
 
-    // 1. Try with placeholders in URL if present
-    if (urlHasPlaceholders) {
-      console.log(`[AUTH] Using credentials in URL for API ${apiId}`);
-      data = await tryRefresh({});
-    }
-
-    // 2. Use dynamic template if available and no data yet
-    if (!data && api.auth_payload_template) {
-      try {
-        let template = api.auth_payload_template;
-        template = template.replace('{{username}}', api.auth_username || '');
-        template = template.replace('{{password}}', api.auth_password || '');
-        const payload = JSON.parse(template);
-        console.log(`[AUTH] Using dynamic template for API ${apiId}`);
-        data = await tryRefresh(payload);
-      } catch (e) {
-        console.error(`[AUTH] Failed to parse auth_payload_template for API ${apiId}:`, e);
+    try {
+      // 1. Try with placeholders in URL if present
+      if (urlHasPlaceholders) {
+        console.log(`[AUTH] Using credentials in URL for API ${apiId}`);
+        data = await tryRefresh({});
       }
-    }
 
-    // 3. Fallback to legacy logic if still no data
-    if (!data) {
-      // Try 'username' first (Telecall pattern)
-      data = await tryRefresh({ username: api.auth_username, password: api.auth_password });
-      
-      // If failed, try 'user' (Common pattern)
+      // 2. Use dynamic template if available and no data yet
+      if (!data && api.auth_payload_template) {
+        try {
+          let template = api.auth_payload_template;
+          template = template.replace('{{username}}', api.auth_username || '');
+          template = template.replace('{{password}}', api.auth_password || '');
+          const payload = JSON.parse(template);
+          console.log(`[AUTH] Using dynamic template for API ${apiId}`);
+          data = await tryRefresh(payload);
+        } catch (e) {
+          console.error(`[AUTH] Failed to parse auth_payload_template for API ${apiId}:`, e);
+        }
+      }
+
+      // 3. Fallback to legacy logic if still no data
       if (!data) {
-        console.log(`[AUTH] Refresh with 'username' failed for API ${apiId}, trying 'user'...`);
-        data = await tryRefresh({ user: api.auth_username, password: api.auth_password });
-      }
+        // Try 'username' first (Telecall pattern)
+        data = await tryRefresh({ username: api.auth_username, password: api.auth_password });
+        
+        // If failed, try 'user' (Common pattern)
+        if (!data) {
+          console.log(`[AUTH] Refresh with 'username' failed for API ${apiId}, trying 'user'...`);
+          data = await tryRefresh({ user: api.auth_username, password: api.auth_password });
+        }
 
-      // If failed, try 'UserName' (Linksfield pattern)
-      if (!data) {
-        console.log(`[AUTH] Refresh with 'user' failed for API ${apiId}, trying 'UserName'...`);
-        data = await tryRefresh({ UserName: api.auth_username, Password: api.auth_password });
+        // If failed, try 'UserName' (Linksfield pattern)
+        if (!data) {
+          console.log(`[AUTH] Refresh with 'user' failed for API ${apiId}, trying 'UserName'...`);
+          data = await tryRefresh({ UserName: api.auth_username, Password: api.auth_password });
+        }
       }
+    } catch (e: any) {
+      if (e.isDnsError) {
+        console.error(`[AUTH] Stopping refresh attempts for API ${apiId} due to DNS error.`);
+        return null;
+      }
+      throw e;
     }
 
     if (!data) {
@@ -742,9 +820,10 @@ app.get("/api/export/:userId", validateApiKey, async (req, res) => {
   const dataStr = JSON.stringify(data, null, 2);
   
   // Try to save to R2 if available
-  if (r2) {
+  const r2Instance = getR2();
+  if (r2Instance) {
     try {
-      await r2.put(fileName, dataStr);
+      await r2Instance.put(fileName, dataStr);
       console.log(`[EXPORT] Saved to R2: ${fileName}`);
     } catch (err) {
       console.error("[EXPORT] Failed to save to R2:", err);
@@ -902,6 +981,15 @@ app.post("/api/proxy", validateApiKey, async (req, res) => {
       }
     }
     
+    // Check Circuit Breaker
+    if (!checkCircuitBreaker(apiId)) {
+      console.warn(`[CIRCUIT] API ${apiId} is currently OPEN. Request blocked.`);
+      return res.status(503).json({ 
+        error: "Service temporarily unavailable (Circuit Breaker)", 
+        retryAfter: Math.ceil((COOLDOWN_PERIOD - (Date.now() - circuitBreakers[apiId].lastFailure)) / 1000)
+      });
+    }
+
     const executeRequest = async (tokenOverride?: string) => {
       const headers: any = {
         'Accept': 'application/json',
@@ -961,8 +1049,15 @@ app.post("/api/proxy", validateApiKey, async (req, res) => {
       }
 
       console.log(`[PROXY] Executing ${endpoint.method} to: ${finalUrl}`);
-      const response = await fetch(finalUrl, fetchOptions);
-      return response;
+      try {
+        const response = await fetch(finalUrl, fetchOptions);
+        if (response.ok) recordApiSuccess(apiId);
+        else if (response.status >= 500) recordApiFailure(apiId);
+        return response;
+      } catch (e: any) {
+        recordApiFailure(apiId);
+        throw e;
+      }
     };
 
     // 1. Check if token needs refresh before request
@@ -999,7 +1094,7 @@ app.post("/api/proxy", validateApiKey, async (req, res) => {
 
     // 4. Log the response with scrubbing
     const scrubbedResponse = scrubData(responseData || { message: "No JSON response" });
-    const responseBodyStr = JSON.stringify(scrubbedResponse);
+    const responseBodyStr = process.env.LOG_RESPONSE_BODY === 'true' ? JSON.stringify(scrubbedResponse) : "LOG_DISABLED";
     const isLargePayload = responseBodyStr.length > 5000;
     
     if (isLargePayload) {
@@ -1022,16 +1117,19 @@ app.post("/api/proxy", validateApiKey, async (req, res) => {
     const isDnsError = error.code === 'ENOTFOUND' || (error.cause && (error.cause.code === 'ENOTFOUND' || error.cause.message?.includes('ENOTFOUND')));
     if (isDnsError) {
       console.error(`[PROXY] DNS Error: Could not resolve host for API ${apiId}.`);
+      res.status(502).json({ 
+        error: "Bad Gateway: Could not resolve host for target API.",
+        details: `DNS resolution failed for the configured base URL of API ${apiId}.`
+      });
     } else {
       console.error("Proxy error:", error);
+      const message = error.message || "Unknown proxy error";
+      const cause = error.cause ? ` (Cause: ${error.cause.message || error.cause})` : "";
+      res.status(500).json({ 
+        error: `${message}${cause}`,
+        details: error.stack
+      });
     }
-    
-    const message = error.message || "Unknown proxy error";
-    const cause = error.cause ? ` (Cause: ${error.cause.message || error.cause})` : "";
-    res.status(500).json({ 
-      error: `${message}${cause}`,
-      details: error.stack
-    });
   }
 });
 
@@ -1193,9 +1291,21 @@ app.get("/api/admin/system-status", adminMiddleware, async (req, res) => {
       status: "Ready",
       buckets: "3 Total",
       percentage: 15
-    }
+    },
+    circuitBreakers: Object.entries(circuitBreakers).map(([id, cb]) => ({ id, ...cb }))
   };
   res.json(status);
+});
+
+app.post("/api/admin/circuit/reset", adminMiddleware, async (req, res) => {
+  const { apiId } = req.body;
+  if (apiId) {
+    delete circuitBreakers[apiId];
+    res.json({ success: true, message: `Circuit for API ${apiId} reset.` });
+  } else {
+    Object.keys(circuitBreakers).forEach(key => delete circuitBreakers[Number(key)]);
+    res.json({ success: true, message: "All circuits reset." });
+  }
 });
 
 app.get("/api/apis/:id/stats", validateApiKey, async (req, res) => {
@@ -1258,10 +1368,24 @@ app.use(globalErrorHandler);
 
 // Vite middleware for development
 async function startServer() {
-  // Initialize Database Adapter
-  await initDB();
+  console.log("[SYSTEM] Starting Loki Hub Server...");
   
-  await initDatabase();
+  // Initialize Database Adapter
+  try {
+    await initDB();
+    console.log("[SYSTEM] Database Adapter Initialized.");
+  } catch (e: any) {
+    console.error("[FATAL] Database Initialization Failed:", e.message);
+    process.exit(1);
+  }
+  
+  try {
+    await initDatabase();
+    console.log("[SYSTEM] Database Schema Verified.");
+  } catch (e: any) {
+    console.error("[FATAL] Database Schema Initialization Failed:", e.message);
+    process.exit(1);
+  }
   
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
