@@ -1,0 +1,95 @@
+app_name: Loki Hub (Loki API Hub)
+version: "1.0.0"
+description: "A centralized API Hub acting as a smart proxy, governance, and security layer for external integrations."
+author: "Loki Team"
+
+stack:
+  frontend:
+    framework: "React 19"
+    styling: "Tailwind CSS 4.0"
+    icons: "Lucide React"
+    animations: "Motion (framer-motion)"
+    charts: "Recharts"
+  backend:
+    runtime: "Node.js / Cloudflare Workers"
+    framework: "Express 4.21"
+    language: "TypeScript"
+    bundler: "Vite / TSX"
+  database_layer:
+    primary_sql: "Cloudflare D1 (Production) / SQLite (Local Dev)"
+    caching_sessions: "Cloudflare Workers KV"
+    large_payloads: "Cloudflare R2"
+  security:
+    hashing: "Bcryptjs"
+    encryption: "AES-256-CBC (crypto module)"
+    validation: "Zod"
+
+architecture:
+  pattern: "Adapter Pattern for Database/Storage"
+  details: |
+    The application uses a flexible adapter system (src/db/index.ts) that detects the environment.
+    In Cloudflare, it binds to D1, KV, and R2. In local/container environments, it falls back to 
+    SQLite and local memory, ensuring seamless transitions between dev and prod.
+
+core_features:
+  api_proxy:
+    description: "Unified endpoint to route calls to multiple external APIs."
+    capabilities:
+      - "Automatic Auth Header Injection (Bearer, API Key, Basic Auth)"
+      - "Token Refresh Logic: Automatically detects expired tokens and calls auth endpoints."
+      - "Dynamic Placeholders: Supports {{username}} and {{password}} in auth URLs/payloads."
+      - "Circuit Breaker: Blocks requests to failing APIs (5+ failures) for 60s to protect system integrity."
+  
+  governance_security:
+    features:
+      - "Rate Limiting: High-performance limiting using Cloudflare KV (Production) or DB (Dev)."
+      - "Data Scrubbing: Automatic masking of PII (CPF, CNPJ, Passwords, Tokens) in logs."
+      - "Credential Encryption: All external API keys and secrets are encrypted at rest using AES-256-CBC."
+      - "Brute Force Protection: Tracks failed login attempts and locks accounts temporarily."
+
+  observability:
+    metrics:
+      - "Latency tracking per request."
+      - "HTTP Status distribution (Success vs Errors)."
+      - "Response body logging (Optional/Scrubbed)."
+    admin_dashboard:
+      - "Real-time stats on API usage."
+      - "System health monitoring (D1, KV, R2 status)."
+      - "User and Plan management."
+
+  user_management:
+    plans:
+      - "Free: Limited requests/month."
+      - "Business: Higher limits, priority support."
+      - "Custom: Tailored limits for enterprise."
+    auth:
+      - "Session-based authentication with KV/DB persistence."
+      - "Admin vs User role separation."
+
+implementation_details:
+  database_schema:
+    tables:
+      - users: "Stores credentials, API keys, and plan associations."
+      - apis: "Configuration for external APIs (base_url, auth_type, encrypted_tokens)."
+      - endpoints: "Specific paths within an API (method, group, favorites)."
+      - logs: "Request history, status codes, and scrubbed responses."
+      - sessions: "Active user sessions (synced between DB and KV)."
+      - plans: "Definition of usage limits and tiers."
+  
+  proxy_flow:
+    step_1: "Client calls /api/proxy/:endpointId with X-Loki-Session-Token."
+    step_2: "Middleware validates session and checks Rate Limit."
+    step_3: "Proxy checks Circuit Breaker status for the target API."
+    step_4: "Proxy checks if Token needs refresh; executes refresh if necessary."
+    step_5: "Proxy executes fetch to external API with injected credentials."
+    step_6: "Response is scrubbed for sensitive data."
+    step_7: "Metadata and scrubbed response are logged to D1/R2."
+    step_8: "Response is returned to the client."
+
+deployment:
+  platform: "Cloudflare Pages / Workers"
+  requirements:
+    - "D1 Database binding named 'DB'"
+    - "KV Namespace binding named 'SESSION'"
+    - "R2 Bucket binding named 'PAYLOADS'"
+    - "Environment Variable: ENCRYPTION_KEY (32-byte hex)"

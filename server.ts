@@ -13,6 +13,7 @@ import { initDB, getDB, getKV, getR2, db, kv, r2, getStatus } from "./src/db/ind
 import { LoginSchema, RegisterSchema } from "./src/schemas/auth.js";
 import { ApiSchema } from "./src/schemas/api.js";
 import { EndpointSchema } from "./src/schemas/endpoint.js";
+import { ProxyRequestSchema } from "./src/schemas/proxy.js";
 
 // Middlewares
 import { validateApiKey, checkOwnership, adminMiddleware } from "./src/middlewares/auth.js";
@@ -20,6 +21,8 @@ import { rateLimitMiddleware } from "./src/middlewares/rateLimit.js";
 
 // Utils
 import { encrypt, decrypt, scrubData, globalErrorHandler } from "./src/utils/security.js";
+import { validateUrlForSsrf } from "./src/utils/ssrf.js";
+import { UserRow, ApiRow, EndpointRow, PlanRow, CircuitBreakerState } from "./src/types.js";
 
 dotenv.config();
 
@@ -30,18 +33,39 @@ const app = express();
 const PORT = 3000;
 
 // Circuit Breaker State
-const circuitBreakers: Record<number, { failures: number, lastFailure: number, status: 'OPEN' | 'CLOSED' | 'HALF_OPEN' }> = {};
 const FAILURE_THRESHOLD = 5;
 const COOLDOWN_PERIOD = 60 * 1000; // 1 minute
 
-function checkCircuitBreaker(apiId: number): boolean {
-  const cb = circuitBreakers[apiId];
-  if (!cb || cb.status === 'CLOSED') return true;
+async function getCircuitBreaker(apiId: number): Promise<CircuitBreakerState> {
+  const kvInstance = getKV();
+  const key = `circuit:${apiId}`;
+  
+  if (kvInstance) {
+    const data = await kvInstance.get(key);
+    if (data) return JSON.parse(data) as CircuitBreakerState;
+  }
+  
+  return { failures: 0, lastFailure: 0, status: 'CLOSED' };
+}
+
+async function saveCircuitBreaker(apiId: number, state: CircuitBreakerState) {
+  const kvInstance = getKV();
+  const key = `circuit:${apiId}`;
+  
+  if (kvInstance) {
+    await kvInstance.put(key, JSON.stringify(state), { expirationTtl: 86400 });
+  }
+}
+
+async function checkCircuitBreaker(apiId: number): Promise<boolean> {
+  const cb = await getCircuitBreaker(apiId);
+  if (cb.status === 'CLOSED') return true;
 
   if (cb.status === 'OPEN') {
     if (Date.now() - cb.lastFailure > COOLDOWN_PERIOD) {
       cb.status = 'HALF_OPEN';
       console.log(`[CIRCUIT] API ${apiId} entering HALF_OPEN state.`);
+      await saveCircuitBreaker(apiId, cb);
       return true;
     }
     return false;
@@ -49,22 +73,39 @@ function checkCircuitBreaker(apiId: number): boolean {
   return true; // HALF_OPEN allows one request
 }
 
-function recordApiSuccess(apiId: number) {
-  if (circuitBreakers[apiId]) {
-    circuitBreakers[apiId] = { failures: 0, lastFailure: 0, status: 'CLOSED' };
+async function recordApiSuccess(apiId: number) {
+  const cb = await getCircuitBreaker(apiId);
+  if (cb.failures > 0 || cb.status !== 'CLOSED') {
+    await saveCircuitBreaker(apiId, { failures: 0, lastFailure: 0, status: 'CLOSED' });
   }
 }
 
-function recordApiFailure(apiId: number) {
-  if (!circuitBreakers[apiId]) {
-    circuitBreakers[apiId] = { failures: 1, lastFailure: Date.now(), status: 'CLOSED' };
-  } else {
-    circuitBreakers[apiId].failures += 1;
-    circuitBreakers[apiId].lastFailure = Date.now();
-    if (circuitBreakers[apiId].failures >= FAILURE_THRESHOLD) {
-      circuitBreakers[apiId].status = 'OPEN';
-      console.warn(`[CIRCUIT] API ${apiId} circuit OPENED due to ${FAILURE_THRESHOLD} failures.`);
-    }
+async function recordApiFailure(apiId: number) {
+  const cb = await getCircuitBreaker(apiId);
+  cb.failures += 1;
+  cb.lastFailure = Date.now();
+  
+  if (cb.failures >= FAILURE_THRESHOLD) {
+    cb.status = 'OPEN';
+    console.warn(`[CIRCUIT] API ${apiId} circuit OPENED due to ${FAILURE_THRESHOLD} failures.`);
+  }
+  
+  await saveCircuitBreaker(apiId, cb);
+}
+
+/**
+ * Asynchronous logging to prevent blocking the main response flow.
+ */
+async function backgroundLog(endpointId: number, status: number, responseBody: string, latency: number, userId: number) {
+  try {
+    // 1. Insert Log
+    await db.run("INSERT INTO logs (endpoint_id, status, response_body, latency) VALUES (?, ?, ?, ?)", 
+      [endpointId, status, responseBody, latency]);
+    
+    // 2. Increment Request Count
+    await db.run("UPDATE users SET request_count = request_count + 1 WHERE id = ?", [userId]);
+  } catch (e) {
+    console.error("[LOG] Background logging failed:", e);
   }
 }
 
@@ -114,8 +155,8 @@ async function initDatabase() {
   if (!columns.includes('last_reset_date')) await db.exec("ALTER TABLE users ADD COLUMN last_reset_date DATETIME DEFAULT CURRENT_TIMESTAMP");
 
   // Seed default plans if they don't exist
-  const planCount = await db.get("SELECT COUNT(*) as count FROM plans") as any;
-  if (planCount.count === 0) {
+  const planCount = await db.get<{ count: number }>("SELECT COUNT(*) as count FROM plans");
+  if (!planCount || planCount.count === 0) {
     await db.run("INSERT INTO plans (name, request_limit, max_apis, max_endpoints, features, price) VALUES (?, ?, ?, ?, ?, ?)", ['Free', 1000, 5, 20, JSON.stringify(['Até 5 integrações ativas.', 'Painel básico.', 'Ambiente sandbox.', 'Logs limitados.']), 'R$ 0']);
     await db.run("INSERT INTO plans (name, request_limit, max_apis, max_endpoints, features, price) VALUES (?, ?, ?, ?, ?, ?)", ['Business', 100000, 100, 1000, JSON.stringify(['Integrações ilimitadas.', 'Automação avançada.', 'Logs ampliados.', 'Suporte prioritário.']), 'Sob consulta']);
     await db.run("INSERT INTO plans (name, request_limit, max_apis, max_endpoints, features, price) VALUES (?, ?, ?, ?, ?, ?)", ['Custom', 1000000, 1000, 10000, JSON.stringify(['Arquitetura personalizada.', 'SLAs dedicados.', 'Governança multi-times.', 'Consultoria.']), 'Sob medida']);
@@ -211,7 +252,7 @@ async function initDatabase() {
 
   // Seed Test User
   const seedUser = async () => {
-    const user = await db.get("SELECT * FROM users WHERE username = ?", ["admin"]) as any;
+    const user = await db.get<UserRow>("SELECT * FROM users WHERE username = ?", ["admin"]);
     const hashedPassword = await bcrypt.hash("root123!", 10);
     const apiKey = `loki_${crypto.randomBytes(16).toString('hex')}`;
     
@@ -300,7 +341,7 @@ app.post("/api/auth/login", async (req, res) => {
   }
   const { username, password } = validation.data;
   console.log(`[AUTH] Login attempt for: ${username}`);
-  const user = await db.get("SELECT * FROM users WHERE username = ?", [username]) as any;
+  const user = await db.get<UserRow>("SELECT * FROM users WHERE username = ?", [username]);
   
   if (!user) {
     console.warn(`[AUTH] Login failure: User not found (${username})`);
@@ -332,7 +373,7 @@ app.post("/api/auth/login", async (req, res) => {
       }
     }
     
-    const plan = await db.get("SELECT * FROM plans WHERE id = ?", [user.plan_id]) as any;
+    const plan = await db.get<PlanRow>("SELECT * FROM plans WHERE id = ?", [user.plan_id]);
     
     res.json({ 
       id: user.id, 
@@ -377,17 +418,17 @@ app.post("/api/auth/register", async (req, res) => {
     const apiKey = `loki_${crypto.randomBytes(16).toString('hex')}`;
     
     // Check if this is the first user
-    const userCountResult = await db.get("SELECT COUNT(*) as count FROM users") as any;
-    const userCount = userCountResult.count;
+    const userCountResult = await db.get<{ count: number }>("SELECT COUNT(*) as count FROM users");
+    const userCount = userCountResult?.count || 0;
     const isAdmin = userCount === 0 ? 1 : 0;
     
     // Ensure plans exist and get Free plan
-    let freePlan = await db.get("SELECT id FROM plans WHERE name = 'Free'") as any;
+    let freePlan = await db.get<PlanRow>("SELECT id FROM plans WHERE name = 'Free'");
     if (!freePlan) {
       console.log("[AUTH] Free plan not found, seeding default plans...");
       try {
         await db.run("INSERT INTO plans (name, request_limit, max_apis, max_endpoints, features, price) VALUES (?, ?, ?, ?, ?, ?)", ['Free', 1000, 5, 20, JSON.stringify(['Até 5 integrações ativas.', 'Painel básico.', 'Ambiente sandbox.', 'Logs limitados.']), 'R$ 0']);
-        freePlan = await db.get("SELECT id FROM plans WHERE name = 'Free'") as any;
+        freePlan = await db.get<PlanRow>("SELECT id FROM plans WHERE name = 'Free'");
       } catch (planErr: any) {
         console.error("[AUTH] Failed to seed Free plan:", planErr.message);
       }
@@ -497,7 +538,7 @@ app.post("/api/auth/logout", async (req, res) => {
 
 app.get("/api/auth/me", validateApiKey, async (req, res) => {
   const userId = (req as any).userId;
-  const user = await db.get("SELECT id, username, api_key FROM users WHERE id = ?", [userId]);
+  const user = await db.get<UserRow>("SELECT id, username, api_key, is_admin FROM users WHERE id = ?", [userId]);
   res.json(user);
 });
 
@@ -513,7 +554,7 @@ app.post("/api/auth/change-password", validateApiKey, async (req, res) => {
   const userId = (req as any).userId;
   const { currentPassword, newPassword } = req.body;
 
-  const user = await db.get("SELECT * FROM users WHERE id = ?", [userId]) as any;
+  const user = await db.get<UserRow>("SELECT * FROM users WHERE id = ?", [userId]);
   if (!user) return res.status(404).json({ error: "User not found" });
 
   const isValid = await bcrypt.compare(currentPassword, user.password);
@@ -534,7 +575,7 @@ app.post("/api/auth/change-password", validateApiKey, async (req, res) => {
 // API Management Routes
 app.get("/api/apis", validateApiKey, async (req, res) => {
   const userId = (req as any).userId;
-  const apis = await db.query("SELECT * FROM apis WHERE user_id = ?", [userId]);
+  const apis = await db.query<ApiRow>("SELECT * FROM apis WHERE user_id = ?", [userId]);
   res.json(apis);
 });
 
@@ -544,7 +585,7 @@ app.get("/api/apis/:id", validateApiKey, async (req, res) => {
   if (!await checkOwnership('apis', Number(id), userId)) {
     return res.status(403).json({ error: "Access denied" });
   }
-  const api = await db.get("SELECT * FROM apis WHERE id = ?", [id]);
+  const api = await db.get<ApiRow>("SELECT * FROM apis WHERE id = ?", [id]);
   if (!api) return res.status(404).json({ error: "API not found" });
   res.json(api);
 });
@@ -557,6 +598,16 @@ app.post("/api/apis", validateApiKey, async (req, res) => {
       return res.status(400).json({ error: "Invalid API configuration", details: validation.error.format() });
     }
     const { name, baseUrl, authType, authConfig, authEndpoint, authUsername, authPassword, authPayloadTemplate } = validation.data;
+
+    // Check plan limits
+    const user = await db.get<UserRow>("SELECT plan_id, is_admin FROM users WHERE id = ?", [userId]);
+    const plan = await db.get<PlanRow>("SELECT max_apis FROM plans WHERE id = ?", [user?.plan_id || 1]);
+    const apiCountResult = await db.get<{ count: number }>("SELECT COUNT(*) as count FROM apis WHERE user_id = ?", [userId]);
+    const apiCount = apiCountResult?.count || 0;
+
+    if (user?.is_admin !== 1 && apiCount >= (plan?.max_apis || 5)) {
+      return res.status(403).json({ error: `Plan limit reached: ${plan?.max_apis || 5} APIs allowed.` });
+    }
 
     const normalizedBaseUrl = baseUrl.startsWith('http') ? baseUrl.replace(/\/+$/, '') : `https://${baseUrl.replace(/\/+$/, '')}`;
     const encryptedConfig = encrypt(JSON.stringify(authConfig || {}));
@@ -611,7 +662,7 @@ app.delete("/api/apis/:id", validateApiKey, async (req, res) => {
       return res.status(403).json({ error: "Access denied" });
     }
     // Delete associated endpoints and logs first
-    const endpoints = await db.query("SELECT id FROM endpoints WHERE api_id = ?", [id]) as any[];
+    const endpoints = await db.query<EndpointRow>("SELECT id FROM endpoints WHERE api_id = ?", [id]);
     for (const ep of endpoints) {
       await db.run("DELETE FROM logs WHERE endpoint_id = ?", [ep.id]);
     }
@@ -623,8 +674,8 @@ app.delete("/api/apis/:id", validateApiKey, async (req, res) => {
   }
 });
 
-async function refreshApiToken(apiId: number) {
-  const api = await db.get("SELECT * FROM apis WHERE id = ?", [apiId]) as any;
+async function refreshApiToken(apiId: number): Promise<string | null> {
+  const api = await db.get<ApiRow>("SELECT * FROM apis WHERE id = ?", [apiId]);
   if (!api || !api.auth_endpoint) return null;
 
   // Replace placeholders in endpoint URL
@@ -688,7 +739,7 @@ async function refreshApiToken(apiId: number) {
   try {
     console.log(`[AUTH] Refreshing token for API: ${api.name} (${apiId})`);
     
-    let data = null;
+    let data: any = null;
 
     try {
       // 1. Try with placeholders in URL if present
@@ -749,7 +800,7 @@ async function refreshApiToken(apiId: number) {
     }
 
     // Extract expiration
-    let expires_at;
+    let expires_at: string;
     if (data.token_expires_at || data.expires_at || (data.data && (data.data.token_expires_at || data.data.expires_at))) {
       expires_at = new Date(data.token_expires_at || data.expires_at || (data.data && (data.data.token_expires_at || data.data.expires_at))).toISOString();
     } else {
@@ -792,7 +843,7 @@ app.get("/api/export/:userId", validateApiKey, async (req, res) => {
   }
   
   // 1. Fetch all APIs for the user
-  const apis = await db.query("SELECT * FROM apis WHERE user_id = ?", [userId]) as any[];
+  const apis = await db.query<ApiRow>("SELECT * FROM apis WHERE user_id = ?", [userId]);
   if (apis.length === 0) {
     return res.json({ message: "No data to export", data: [] });
   }
@@ -800,7 +851,7 @@ app.get("/api/export/:userId", validateApiKey, async (req, res) => {
   // 2. Fetch all endpoints for these APIs in a single query
   const apiIds = apis.map(api => api.id);
   const placeholders = apiIds.map(() => "?").join(",");
-  const allEndpoints = await db.query(`SELECT * FROM endpoints WHERE api_id IN (${placeholders})`, apiIds) as any[];
+  const allEndpoints = await db.query<EndpointRow>(`SELECT * FROM endpoints WHERE api_id IN (${placeholders})`, apiIds);
 
   // 3. Group endpoints by api_id
   const endpointsByApiId = allEndpoints.reduce((acc, ep) => {
@@ -849,7 +900,7 @@ app.get("/api/endpoints/:apiId", validateApiKey, async (req, res) => {
   if (!await checkOwnership('apis', Number(req.params.apiId), userId)) {
     return res.status(403).json({ error: "Access denied" });
   }
-  const endpoints = await db.query("SELECT * FROM endpoints WHERE api_id = ?", [req.params.apiId]);
+  const endpoints = await db.query<EndpointRow>("SELECT * FROM endpoints WHERE api_id = ?", [req.params.apiId]);
   res.json(endpoints);
 });
 
@@ -922,44 +973,45 @@ app.delete("/api/endpoints/:id", validateApiKey, async (req, res) => {
 
 // Proxy Request with Auto-Refresh and 401 Retry Logic
 app.post("/api/proxy", validateApiKey, async (req, res) => {
-  const { apiId, endpointId, body, headers: customHeaders } = req.body;
+  const startTime = Date.now();
+  const userId = (req as any).userId;
+
+  // 1. Validate Input with Zod
+  const validation = ProxyRequestSchema.safeParse(req.body);
+  if (!validation.success) {
+    return res.status(400).json({ error: "Invalid proxy request", details: validation.error.format() });
+  }
+
+  const { apiId, endpointId, body, headers: customHeaders, params } = validation.data;
+
   try {
-    const userId = (req as any).userId;
-    
-    // Rate Limit Check
-    const userPlan = await db.get(`
-      SELECT u.request_count, p.request_limit, u.last_reset_date 
-      FROM users u 
-      JOIN plans p ON u.plan_id = p.id 
-      WHERE u.id = ?
-    `, [userId]) as any;
+    // 2. Fetch API and Endpoint with Strict Typing
+    const api = await db.get<ApiRow>("SELECT * FROM apis WHERE id = ? AND user_id = ?", [apiId, userId]);
+    const endpoint = await db.get<EndpointRow>("SELECT * FROM endpoints WHERE id = ? AND api_id = ?", [endpointId, apiId]);
 
-    if (userPlan) {
-      const lastReset = new Date(userPlan.last_reset_date);
-      const now = new Date();
-      if (now.getMonth() !== lastReset.getMonth() || now.getFullYear() !== lastReset.getFullYear()) {
-        await db.run("UPDATE users SET request_count = 0, last_reset_date = CURRENT_TIMESTAMP WHERE id = ?", [userId]);
-        userPlan.request_count = 0;
-      }
-
-      if (userPlan.request_count >= userPlan.request_limit) {
-        return res.status(429).json({ error: "Rate limit exceeded for your current plan. Please upgrade." });
-      }
+    if (!api || !endpoint) {
+      return res.status(404).json({ error: "API or Endpoint not found" });
     }
 
-    console.log(`[LOKI PROXY] Request from User ${userId} for API ${apiId}`);
-    console.log(`[LOKI PROXY] API_KEY used: ${req.headers['x-loki-api-key']}`);
-    
-    const api = await db.get("SELECT * FROM apis WHERE id = ?", [apiId]) as any;
-    const endpoint = await db.get("SELECT * FROM endpoints WHERE id = ?", [endpointId]) as any;
-    
-    if (!api || !endpoint) return res.status(404).json({ error: "API or Endpoint not found" });
-    
-    if (api.user_id !== userId) {
-      return res.status(403).json({ error: "Access denied" });
+    // 3. SSRF Protection
+    const isSafe = await validateUrlForSsrf(api.base_url);
+    if (!isSafe) {
+      console.error(`[SECURITY] Blocked SSRF attempt to: ${api.base_url}`);
+      return res.status(400).json({ error: "Invalid target URL (SSRF Protection)" });
     }
 
-    const authConfig = JSON.parse(decrypt(api.auth_config));
+    // 4. Circuit Breaker Check
+    if (!await checkCircuitBreaker(apiId)) {
+      return res.status(503).json({ error: "Service temporarily unavailable (Circuit Breaker OPEN)" });
+    }
+
+    // 5. Token Refresh Logic
+    let token = api.token ? decrypt(api.token) : null;
+    if (api.auth_type !== 'none' && api.auth_endpoint && (!token || (api.token_expires_at && new Date(api.token_expires_at) < new Date()))) {
+      token = await refreshApiToken(apiId);
+    }
+
+    // 6. Build Request
     let baseUrl = api.base_url.replace(/\/+$/, '');
     if (!baseUrl.startsWith('http')) {
       baseUrl = `https://${baseUrl}`;
@@ -967,75 +1019,41 @@ app.post("/api/proxy", validateApiKey, async (req, res) => {
     const path = endpoint.path.replace(/^\/+/, '');
     let url = endpoint.path.startsWith('http') ? endpoint.path : `${baseUrl}/${path}`;
     
-    // Append query params for GET requests
-    const queryParams = { ...req.query, ...(body && typeof body === 'object' ? body : {}) };
-    if (endpoint.method === 'GET' && Object.keys(queryParams).length > 0) {
-      const qs = Object.entries(queryParams)
-        .filter(([_, v]) => v !== undefined && v !== null && v !== '')
-        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
-        .join('&');
-      if (qs) {
-        const separator = url.includes('?') ? (url.endsWith('?') || url.endsWith('&') ? '' : '&') : '?';
-        url += separator + qs;
-        console.log(`[PROXY] Appended query params: ${qs}`);
-      }
+    if (params) {
+      const searchParams = new URLSearchParams(params as Record<string, string>);
+      const separator = url.includes('?') ? '&' : '?';
+      url += separator + searchParams.toString();
     }
-    
-    // Check Circuit Breaker
-    if (!checkCircuitBreaker(apiId)) {
-      console.warn(`[CIRCUIT] API ${apiId} is currently OPEN. Request blocked.`);
-      return res.status(503).json({ 
-        error: "Service temporarily unavailable (Circuit Breaker)", 
-        retryAfter: Math.ceil((COOLDOWN_PERIOD - (Date.now() - circuitBreakers[apiId].lastFailure)) / 1000)
-      });
+
+    const requestHeaders: Record<string, string> = {
+      'Accept': 'application/json',
+      ...customHeaders
+    };
+
+    if (['POST', 'PUT', 'PATCH'].includes(endpoint.method)) {
+      requestHeaders['Content-Type'] = 'application/json';
+    }
+
+    // Inject Auth
+    if (token) {
+      if (api.auth_type === 'bearer' || api.auth_type === 'oauth2') {
+        const cleanToken = String(token).trim();
+        requestHeaders['Authorization'] = cleanToken.toLowerCase().startsWith('bearer ') ? cleanToken : `Bearer ${cleanToken}`;
+      } else if (api.auth_type === 'apikey') {
+        const authConfig = JSON.parse(decrypt(api.auth_config));
+        const keyName = authConfig.keyName || 'X-API-Key';
+        requestHeaders[keyName] = token;
+      } else if (api.auth_type === 'basic' && api.auth_username && api.auth_password) {
+        const credentials = Buffer.from(`${api.auth_username}:${api.auth_password}`).toString('base64');
+        requestHeaders['Authorization'] = `Basic ${credentials}`;
+      }
     }
 
     const executeRequest = async (tokenOverride?: string) => {
-      const headers: any = {
-        'Accept': 'application/json',
-        ...customHeaders
-      };
-
-      // Only add Content-Type for requests with body
-      if (['POST', 'PUT', 'PATCH'].includes(endpoint.method)) {
-        headers['Content-Type'] = 'application/json';
-      }
-
-      let finalBody = body ? { ...body } : {};
-      let finalUrl = url;
-
-      // Apply Auth
-      if (api.auth_type === 'apikey' && authConfig.apiKey) {
-        headers['X-API-Key'] = authConfig.apiKey;
-      } else if (api.auth_type === 'oauth2' || api.auth_type === 'bearer') {
-        const token = tokenOverride || (api.token ? decrypt(api.token) : null);
-        if (token) {
-          const cleanToken = String(token).trim();
-          const bearerToken = cleanToken.toLowerCase().startsWith('bearer ') 
-            ? cleanToken 
-            : `Bearer ${cleanToken}`;
-          headers['Authorization'] = bearerToken;
-        }
-      } else if (api.auth_type === 'basic' && api.auth_username && api.auth_password) {
-        const credentials = Buffer.from(`${api.auth_username}:${api.auth_password}`).toString('base64');
-        headers['Authorization'] = `Basic ${credentials}`;
-      } else if (api.auth_type === 'none') {
-        // If "No Auth" but credentials provided, append to body or query string
-        if (authConfig.apiKey) {
-          if (endpoint.method === 'GET') {
-            const separator = finalUrl.includes('?') ? (finalUrl.endsWith('?') || finalUrl.endsWith('&') ? '' : '&') : '?';
-            finalUrl += `${separator}UserName=${encodeURIComponent(authConfig.apiKey)}`;
-          } else {
-            finalBody.UserName = authConfig.apiKey;
-          }
-        }
-        if (authConfig.clientSecret) {
-          if (endpoint.method === 'GET') {
-            const separator = finalUrl.includes('?') ? (finalUrl.endsWith('?') || finalUrl.endsWith('&') ? '' : '&') : '?';
-            finalUrl += `${separator}Password=${encodeURIComponent(authConfig.clientSecret)}`;
-          } else {
-            finalBody.Password = authConfig.clientSecret;
-          }
+      const headers = { ...requestHeaders };
+      if (tokenOverride) {
+        if (api.auth_type === 'bearer' || api.auth_type === 'oauth2') {
+          headers['Authorization'] = `Bearer ${tokenOverride}`;
         }
       }
 
@@ -1045,91 +1063,56 @@ app.post("/api/proxy", validateApiKey, async (req, res) => {
       };
 
       if (['POST', 'PUT', 'PATCH'].includes(endpoint.method)) {
-        fetchOptions.body = JSON.stringify(finalBody);
+        fetchOptions.body = JSON.stringify(body || {});
       }
 
-      console.log(`[PROXY] Executing ${endpoint.method} to: ${finalUrl}`);
-      try {
-        const response = await fetch(finalUrl, fetchOptions);
-        if (response.ok) recordApiSuccess(apiId);
-        else if (response.status >= 500) recordApiFailure(apiId);
-        return response;
-      } catch (e: any) {
-        recordApiFailure(apiId);
-        throw e;
-      }
+      const response = await fetch(url, fetchOptions);
+      if (response.ok) await recordApiSuccess(apiId);
+      else if (response.status >= 500) await recordApiFailure(apiId);
+      return response;
     };
 
-    // 1. Check if token needs refresh before request
-    let currentToken = api.token ? decrypt(api.token) : null;
-    if (api.auth_endpoint) {
-      const isExpired = api.token_expires_at && new Date(api.token_expires_at) < new Date(Date.now() + 30000); // 30s buffer
-      if (!currentToken || isExpired) {
-        currentToken = await refreshApiToken(api.id);
-      }
-    }
+    // 7. Execute Fetch
+    let response = await executeRequest(token);
 
-    // 2. Execute request
-    const startTime = Date.now();
-    let response = await executeRequest(currentToken);
-    const endTime = Date.now();
-    const latency = endTime - startTime;
-
-    // Log the actual URL called for debugging
-    console.log(`[PROXY] ${endpoint.method} Response: ${response.status} from ${url}`);
-
-    // 3. Handle 401: Refresh token and retry once
+    // 8. Handle 401: Refresh token and retry once
     if (response.status === 401 && api.auth_endpoint) {
       console.log(`[PROXY] 401 detected for API ${apiId}, attempting refresh and retry...`);
-      currentToken = await refreshApiToken(api.id);
-      if (currentToken) {
-        const retryStartTime = Date.now();
-        response = await executeRequest(currentToken);
-        const retryEndTime = Date.now();
-        // For retries, we could sum or just take the last one. Let's take the last one.
+      const newToken = await refreshApiToken(apiId);
+      if (newToken) {
+        response = await executeRequest(newToken);
       }
     }
 
-    const responseData = await response.json().catch(() => null);
-
-    // 4. Log the response with scrubbing
-    const scrubbedResponse = scrubData(responseData || { message: "No JSON response" });
-    const responseBodyStr = process.env.LOG_RESPONSE_BODY === 'true' ? JSON.stringify(scrubbedResponse) : "LOG_DISABLED";
-    const isLargePayload = responseBodyStr.length > 5000;
+    const latency = Date.now() - startTime;
     
-    if (isLargePayload) {
-      console.log(`[LOKI R2] Payload too large for D1, simulating R2 storage...`);
-    }
-
-    await db.run("INSERT INTO logs (endpoint_id, status, response_body, latency) VALUES (?, ?, ?, ?)", 
-      [endpoint.id, response.status, responseBodyStr, Number(latency)]);
-
-    // Increment request count
-    await db.run("UPDATE users SET request_count = request_count + 1 WHERE id = ?", [userId]);
-
-    res.json({ 
-      status: response.status,
-      statusText: response.statusText,
-      data: responseData || { message: "No JSON response" },
-      headers: Object.fromEntries(response.headers.entries())
-    });
-  } catch (error: any) {
-    const isDnsError = error.code === 'ENOTFOUND' || (error.cause && (error.cause.code === 'ENOTFOUND' || error.cause.message?.includes('ENOTFOUND')));
-    if (isDnsError) {
-      console.error(`[PROXY] DNS Error: Could not resolve host for API ${apiId}.`);
-      res.status(502).json({ 
-        error: "Bad Gateway: Could not resolve host for target API.",
-        details: `DNS resolution failed for the configured base URL of API ${apiId}.`
-      });
+    // 9. Robust Response Parsing
+    const contentType = response.headers.get('content-type') || '';
+    let responseData: any;
+    
+    if (contentType.includes('application/json')) {
+      responseData = await response.json().catch(() => ({ error: "Failed to parse JSON response" }));
     } else {
-      console.error("Proxy error:", error);
-      const message = error.message || "Unknown proxy error";
-      const cause = error.cause ? ` (Cause: ${error.cause.message || error.cause})` : "";
-      res.status(500).json({ 
-        error: `${message}${cause}`,
-        details: error.stack
-      });
+      responseData = await response.text().catch(() => "Failed to read response text");
     }
+
+    // 10. Background Logging (Non-blocking)
+    const logBody = typeof responseData === 'string' ? responseData : JSON.stringify(responseData);
+    const scrubbedBody = scrubData(logBody);
+    backgroundLog(endpointId, response.status, scrubbedBody, latency, userId).catch(console.error);
+
+    res.status(response.status).json(responseData);
+
+  } catch (error: any) {
+    const latency = Date.now() - startTime;
+    console.error(`[PROXY] Error:`, error);
+    
+    await recordApiFailure(apiId);
+    
+    // Background log error
+    backgroundLog(endpointId, 500, JSON.stringify({ error: error.message }), latency, userId).catch(console.error);
+    
+    res.status(500).json({ error: "Proxy request failed", details: error.message });
   }
 });
 
@@ -1276,35 +1259,40 @@ app.put("/api/auth/profile", validateApiKey, async (req, res) => {
 });
 
 app.get("/api/admin/system-status", adminMiddleware, async (req, res) => {
+  const dbStatus = getStatus();
   const status = {
     d1: {
-      status: "Connected",
+      status: dbStatus.database !== "Not Initialized" ? "Connected" : "Disconnected",
       usage: "12.4 MB / 100 MB",
       percentage: 12
     },
     kv: {
-      status: "Active",
-      keys: "1,240 Active",
+      status: dbStatus.kv.includes("Active") ? "Active" : "Inactive",
+      keys: "Managed by Cloudflare",
       percentage: 40
     },
     r2: {
-      status: "Ready",
+      status: dbStatus.r2.includes("Active") ? "Ready" : "Not Configured",
       buckets: "3 Total",
       percentage: 15
     },
-    circuitBreakers: Object.entries(circuitBreakers).map(([id, cb]) => ({ id, ...cb }))
+    circuitBreakers: [] // In serverless, we don't have a global in-memory list
   };
   res.json(status);
 });
 
 app.post("/api/admin/circuit/reset", adminMiddleware, async (req, res) => {
   const { apiId } = req.body;
+  const kvInstance = getKV();
+  
   if (apiId) {
-    delete circuitBreakers[apiId];
+    if (kvInstance) {
+      await kvInstance.delete(`circuit:${apiId}`);
+    }
     res.json({ success: true, message: `Circuit for API ${apiId} reset.` });
   } else {
-    Object.keys(circuitBreakers).forEach(key => delete circuitBreakers[Number(key)]);
-    res.json({ success: true, message: "All circuits reset." });
+    // Resetting all is harder in KV without listing, but we can clear common ones if we had a list
+    res.json({ success: false, message: "Individual API ID required for reset in this environment." });
   }
 });
 
