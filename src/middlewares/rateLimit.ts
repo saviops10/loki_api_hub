@@ -1,15 +1,17 @@
-import { Request, Response, NextFunction } from "express";
-import { getDB } from "../db/index.js";
+import { Context, Next } from "hono";
+import { getDB, getKV } from "../db/index.js";
+import { AppEnv } from "../types.js";
 
 const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
 const MAX_REQUESTS = 100;
 
 // Note: In a real Cloudflare environment, this would use Workers KV or WAF.
 // Here we use the database to persist rate limits across restarts as requested.
-export const rateLimitMiddleware = async (req: Request, res: Response, next: NextFunction) => {
-  const ip = req.ip || 'unknown';
+export const rateLimitMiddleware = async (c: Context<AppEnv>, next: Next) => {
+  // In Hono/Cloudflare, c.req.header('cf-connecting-ip') is often used
+  const ip = c.req.header('cf-connecting-ip') || 'unknown';
   const now = Date.now();
-  const kv = (req as any).env?.SESSION || (globalThis as any).SESSION;
+  const kv = getKV();
 
   try {
     if (kv) {
@@ -20,7 +22,7 @@ export const rateLimitMiddleware = async (req: Request, res: Response, next: Nex
 
       if (limit && now < limit.reset) {
         if (limit.count >= MAX_REQUESTS) {
-          return res.status(429).json({ error: "Too many requests. Please try again later." });
+          return c.json({ error: "Too many requests. Please try again later." }, 429);
         }
         limit.count += 1;
         await kv.put(key, JSON.stringify(limit), { expirationTtl: Math.ceil((limit.reset - now) / 1000) });
@@ -43,7 +45,7 @@ export const rateLimitMiddleware = async (req: Request, res: Response, next: Nex
 
       if (limit && now < limit.reset) {
         if (limit.count >= MAX_REQUESTS) {
-          return res.status(429).json({ error: "Too many requests. Please try again later." });
+          return c.json({ error: "Too many requests. Please try again later." }, 429);
         }
         await db.run("UPDATE rate_limits SET count = count + 1 WHERE ip = ?", [ip]);
       } else {
@@ -51,9 +53,9 @@ export const rateLimitMiddleware = async (req: Request, res: Response, next: Nex
           [ip, 1, now + RATE_LIMIT_WINDOW]);
       }
     }
-    next();
+    await next();
   } catch (error) {
     console.error("Rate limit error:", error);
-    next(); // Fallback to allow request if rate limiter fails
+    await next(); // Fallback to allow request if rate limiter fails
   }
 };

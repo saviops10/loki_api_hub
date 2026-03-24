@@ -1,10 +1,10 @@
-import { Request, Response, NextFunction } from "express";
+import { Context, Next } from "hono";
 import { getDB, getKV, db, kv } from "../db/index.js";
-import { UserRow, SessionRow } from "../types.js";
+import { UserRow, SessionRow, AppEnv } from "../types.js";
 
-export const validateApiKey = async (req: Request, res: Response, next: NextFunction) => {
-  const apiKey = req.headers['x-loki-api-key'];
-  const sessionToken = req.headers['x-loki-session-token'] as string;
+export const validateApiKey = async (c: Context<AppEnv>, next: Next) => {
+  const apiKey = c.req.header('x-loki-api-key');
+  const sessionToken = c.req.header('x-loki-session-token');
 
   if (sessionToken) {
     let session: SessionRow | null = null;
@@ -42,7 +42,7 @@ export const validateApiKey = async (req: Request, res: Response, next: NextFunc
       if (now.getTime() - lastActivity.getTime() > 3600000) { // 1 hour
         await db.run("DELETE FROM sessions WHERE token = ?", [sessionToken]);
         if (kvInstance) await kvInstance.delete(sessionToken);
-        return res.status(401).json({ error: "Session expired due to inactivity" });
+        return c.json({ error: "Session expired due to inactivity" }, 401);
       }
       
       // Update last activity (Background update)
@@ -53,18 +53,18 @@ export const validateApiKey = async (req: Request, res: Response, next: NextFunc
         kvInstance.put(sessionToken, JSON.stringify(session), { expirationTtl: 3600 }).catch(console.error);
       }
       
-      (req as any).userId = session.user_id;
-      return next();
+      c.set('userId', session.user_id);
+      return await next();
     }
   }
 
-  if (!apiKey) return res.status(401).json({ error: "Missing authentication" });
+  if (!apiKey) return c.json({ error: "Missing authentication" }, 401);
 
   const user = await db.get<UserRow>("SELECT id FROM users WHERE api_key = ?", [apiKey]);
-  if (!user) return res.status(403).json({ error: "Invalid API_KEY" });
+  if (!user) return c.json({ error: "Invalid API_KEY" }, 403);
   
-  (req as any).userId = user.id;
-  next();
+  c.set('userId', user.id);
+  await next();
 };
 
 export const checkOwnership = async (table: string, id: number, userId: number) => {
@@ -81,9 +81,9 @@ export const checkOwnership = async (table: string, id: number, userId: number) 
   return false;
 };
 
-export const adminMiddleware = async (req: any, res: any, next: any) => {
-  const sessionToken = req.headers['x-loki-session-token'];
-  if (!sessionToken) return res.status(401).json({ error: "Unauthorized" });
+export const adminMiddleware = async (c: Context<AppEnv>, next: Next) => {
+  const sessionToken = c.req.header('x-loki-session-token');
+  if (!sessionToken) return c.json({ error: "Unauthorized" }, 401);
 
   let userId: number | null = null;
   const kvInstance = getKV();
@@ -102,13 +102,13 @@ export const adminMiddleware = async (req: any, res: any, next: any) => {
 
   if (!userId) {
     const session = await db.get<SessionRow>("SELECT user_id FROM sessions WHERE token = ?", [sessionToken]);
-    if (!session) return res.status(401).json({ error: "Invalid session" });
+    if (!session) return c.json({ error: "Invalid session" }, 401);
     userId = session.user_id;
   }
 
   const user = await db.get<UserRow>("SELECT is_admin FROM users WHERE id = ?", [userId]);
-  if (!user || user.is_admin !== 1) return res.status(403).json({ error: "Forbidden: Admin access required" });
+  if (!user || user.is_admin !== 1) return c.json({ error: "Forbidden: Admin access required" }, 403);
 
-  req.userId = userId;
-  next();
+  c.set('userId', userId);
+  await next();
 };

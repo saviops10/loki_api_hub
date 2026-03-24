@@ -1,3 +1,5 @@
+/// <reference types="@cloudflare/workers-types" />
+
 export interface UserRow {
   id: number;
   username: string;
@@ -69,6 +71,18 @@ export interface CircuitBreakerState {
   lastFailure: number;
   status: 'OPEN' | 'CLOSED' | 'HALF_OPEN';
 }
+
+export type Variables = {
+  userId: number;
+};
+
+export type Bindings = {
+  DB: D1Database;
+  SESSION: KVNamespace;
+  PAYLOADS: R2Bucket;
+};
+
+export type AppEnv = { Bindings: Bindings; Variables: Variables };
 
 // Compatibility Aliases
 export type User = UserRow;
