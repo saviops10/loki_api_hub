@@ -1,4 +1,6 @@
+import { Context } from "hono";
 import bcrypt from "bcryptjs";
+import { AppEnv } from "../types.js";
 
 export interface DatabaseAdapter {
   query<T = any>(sql: string, params?: any[]): Promise<T[]>;
@@ -75,10 +77,10 @@ class SQLiteAdapter implements DatabaseAdapter {
 }
 
 class D1Adapter implements DatabaseAdapter {
-  constructor(private d1: any) {}
+  constructor(private d1: D1Database) {}
 
   pragma(_sql: string): void {
-    // D1 doesn't support pragma in the same way, usually not needed for WAL
+    // D1 doesn't support pragma in the same way
   }
 
   async query<T = any>(sql: string, params: any[] = []): Promise<T[]> {
@@ -109,74 +111,55 @@ class D1Adapter implements DatabaseAdapter {
   }
 }
 
-let dbInstance: DatabaseAdapter;
-let kvInstance: KVAdapter;
-let r2Instance: R2Adapter;
-
 /**
- * Initializes the database and storage adapters using the provided environment.
- * In Hono/Cloudflare, this should be called with c.env.
+ * Returns the database adapter instance from the context.
  */
-export const initDB = async (env?: any) => {
-  const actualEnv = env || (globalThis as any);
-  const isCloudflare = !!actualEnv.DB || actualEnv.CF_PAGES === '1' || !!actualEnv.__cf_pages_shared_data;
-  
-  if (actualEnv.DB) {
-    dbInstance = new D1Adapter(actualEnv.DB);
-  } else if (!dbInstance) {
-    try {
-      dbInstance = await SQLiteAdapter.create("data.db");
-    } catch (e) {
-      console.error("Failed to initialize SQLite Adapter", e);
-      throw new Error("Database initialization failed.");
-    }
+export const getDB = (c: Context<AppEnv>): DatabaseAdapter => {
+  if (c.env.DB) {
+    return new D1Adapter(c.env.DB);
   }
-
-  if (actualEnv.SESSION) {
-    kvInstance = actualEnv.SESSION;
-  }
-
-  if (actualEnv.PAYLOADS) {
-    r2Instance = actualEnv.PAYLOADS;
-  }
-
-  return dbInstance;
+  // Fallback for local development if DB is not provided in env
+  // In a real Cloudflare environment, DB should always be present if configured.
+  throw new Error("D1 Database binding (DB) not found in environment.");
 };
 
 /**
- * Middleware for Hono to inject DB and storage adapters into the context.
+ * Returns the KV adapter instance from the context.
  */
-export const dbMiddleware = async (c: any, next: any) => {
-  await initDB(c.env);
-  await initDatabase();
+export const getKV = (c: Context<AppEnv>): KVNamespace | undefined => {
+  return c.env.SESSION;
+};
+
+/**
+ * Returns the R2 adapter instance from the context.
+ */
+export const getR2 = (c: Context<AppEnv>): R2Bucket | undefined => {
+  return c.env.PAYLOADS;
+};
+
+/**
+ * Middleware for Hono to initialize the database schema.
+ */
+export const dbMiddleware = async (c: Context<AppEnv>, next: () => Promise<void>) => {
+  const database = getDB(c);
+  await initDatabase(database);
   await next();
 };
 
-export const getDB = () => {
-  if (!dbInstance) {
-    throw new Error("Database not initialized. Ensure dbMiddleware is used or initDB is called.");
-  }
-  return dbInstance;
-};
-
-export const getKV = () => kvInstance;
-export const getR2 = () => r2Instance;
-
-export const getStatus = () => {
+export const getStatus = (c: Context<AppEnv>) => {
+  const db = c.env.DB ? "Cloudflare D1" : "Not Initialized";
   return {
-    database: dbInstance ? dbInstance.getType() : "Not Initialized",
-    kv: kvInstance ? "Active (Cloudflare SESSION)" : "Inactive (Local Fallback)",
-    r2: r2Instance ? "Active (Cloudflare PAYLOADS)" : "Inactive (Local Fallback)",
-    isCloudflare: (globalThis as any).CF_PAGES === '1' || !!(globalThis as any).__cf_pages_shared_data
+    database: db,
+    kv: c.env.SESSION ? "Active (Cloudflare SESSION)" : "Inactive",
+    r2: c.env.PAYLOADS ? "Active (Cloudflare PAYLOADS)" : "Inactive",
+    isCloudflare: !!c.env.DB
   };
 };
 
 let isInitialized = false;
 
-export async function initDatabase() {
+export async function initDatabase(database: DatabaseAdapter) {
   if (isInitialized) return;
-  
-  const database = getDB();
   
   // Initialize Tables
   await database.exec(`
@@ -209,16 +192,20 @@ export async function initDatabase() {
   `);
 
   // Migration: Ensure new columns exist in users table
-  const tableInfo = await database.query(`PRAGMA table_info(users)`);
-  const columns = tableInfo.map(c => c.name);
-  if (!columns.includes('full_name')) await database.exec("ALTER TABLE users ADD COLUMN full_name TEXT");
-  if (!columns.includes('email')) await database.exec("ALTER TABLE users ADD COLUMN email TEXT");
-  if (!columns.includes('is_admin')) await database.exec("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0");
-  if (!columns.includes('failed_attempts')) await database.exec("ALTER TABLE users ADD COLUMN failed_attempts INTEGER DEFAULT 0");
-  if (!columns.includes('lock_until')) await database.exec("ALTER TABLE users ADD COLUMN lock_until DATETIME");
-  if (!columns.includes('plan_id')) await database.exec("ALTER TABLE users ADD COLUMN plan_id INTEGER REFERENCES plans(id)");
-  if (!columns.includes('request_count')) await database.exec("ALTER TABLE users ADD COLUMN request_count INTEGER DEFAULT 0");
-  if (!columns.includes('last_reset_date')) await database.exec("ALTER TABLE users ADD COLUMN last_reset_date DATETIME DEFAULT CURRENT_TIMESTAMP");
+  try {
+    const tableInfo = await database.query(`PRAGMA table_info(users)`);
+    const columns = tableInfo.map(c => c.name);
+    if (!columns.includes('full_name')) await database.exec("ALTER TABLE users ADD COLUMN full_name TEXT");
+    if (!columns.includes('email')) await database.exec("ALTER TABLE users ADD COLUMN email TEXT");
+    if (!columns.includes('is_admin')) await database.exec("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0");
+    if (!columns.includes('failed_attempts')) await database.exec("ALTER TABLE users ADD COLUMN failed_attempts INTEGER DEFAULT 0");
+    if (!columns.includes('lock_until')) await database.exec("ALTER TABLE users ADD COLUMN lock_until DATETIME");
+    if (!columns.includes('plan_id')) await database.exec("ALTER TABLE users ADD COLUMN plan_id INTEGER REFERENCES plans(id)");
+    if (!columns.includes('request_count')) await database.exec("ALTER TABLE users ADD COLUMN request_count INTEGER DEFAULT 0");
+    if (!columns.includes('last_reset_date')) await database.exec("ALTER TABLE users ADD COLUMN last_reset_date DATETIME DEFAULT CURRENT_TIMESTAMP");
+  } catch (e) {
+    console.warn("Migration check failed (might be D1 which doesn't support PRAGMA in some contexts)", e);
+  }
 
   // Seed default plans if they don't exist
   const planCountResult = await database.get<{ count: number }>("SELECT COUNT(*) as count FROM plans");
@@ -288,25 +275,6 @@ export async function initDatabase() {
     );
   `);
 
-  // Migration: Ensure new columns exist
-  const tables = {
-    apis: ['auth_endpoint', 'auth_username', 'auth_password', 'auth_payload_template', 'token', 'token_expires_at', 'last_refresh'],
-    endpoints: ['group_name'],
-    users: ['failed_attempts', 'lock_until', 'api_key', 'full_name', 'email', 'is_admin'],
-    logs: ['latency']
-  };
-
-  for (const [table, columns] of Object.entries(tables)) {
-    const info = await database.query(`PRAGMA table_info(${table})`);
-    const existingColumns = info.map(c => c.name);
-    
-    for (const col of columns) {
-      if (!existingColumns.includes(col)) {
-        await database.exec(`ALTER TABLE ${table} ADD COLUMN ${col} TEXT`);
-      }
-    }
-  }
-
   // Seed Test User
   const adminUser = await database.get("SELECT * FROM users WHERE username = ?", ["admin"]);
   const hashedPassword = await bcrypt.hash("root123!", 10);
@@ -314,38 +282,7 @@ export async function initDatabase() {
   
   if (!adminUser) {
     await database.run("INSERT INTO users (username, full_name, email, password, api_key, is_admin) VALUES (?, ?, ?, ?, ?, ?)", ["admin", "System Administrator", "admin@loki.hub", hashedPassword, apiKey, 1]);
-  } else {
-    if (adminUser.is_admin !== 1) {
-      await database.run("UPDATE users SET is_admin = 1 WHERE username = ?", ["admin"]);
-    }
-    if (!adminUser.password.startsWith('$2a$')) {
-      await database.run("UPDATE users SET password = ? WHERE username = ?", [hashedPassword, "admin"]);
-    }
   }
 
   isInitialized = true;
 }
-
-// Proxies for easier access
-export const db: DatabaseAdapter = new Proxy({} as DatabaseAdapter, {
-  get: (_, prop) => {
-    const instance = getDB();
-    return (instance as any)[prop];
-  }
-});
-
-export const kv: KVAdapter = new Proxy({} as KVAdapter, {
-  get: (_, prop) => {
-    const instance = getKV();
-    if (!instance) throw new Error("KV instance (SESSION) not initialized.");
-    return (instance as any)[prop];
-  }
-});
-
-export const r2: R2Adapter = new Proxy({} as R2Adapter, {
-  get: (_, prop) => {
-    const instance = getR2();
-    if (!instance) throw new Error("R2 instance (PAYLOADS) not initialized.");
-    return (instance as any)[prop];
-  }
-});

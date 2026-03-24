@@ -1,16 +1,17 @@
 import { Context, Next } from "hono";
-import { getDB, getKV, db, kv } from "../db/index.js";
-import { UserRow, SessionRow, AppEnv } from "../types.js";
+import { getDB, getKV } from "../db/index.js";
+import { UserRow, SessionRow, AppEnv, DatabaseAdapter } from "../types.js";
 
 export const validateApiKey = async (c: Context<AppEnv>, next: Next) => {
   const apiKey = c.req.header('x-loki-api-key');
   const sessionToken = c.req.header('x-loki-session-token');
+  const db = getDB(c);
+  const kvInstance = getKV(c);
 
   if (sessionToken) {
     let session: SessionRow | null = null;
     
     // Try KV first if available
-    const kvInstance = getKV();
     if (kvInstance) {
       try {
         const kvData = await kvInstance.get(sessionToken);
@@ -67,7 +68,7 @@ export const validateApiKey = async (c: Context<AppEnv>, next: Next) => {
   await next();
 };
 
-export const checkOwnership = async (table: string, id: number, userId: number) => {
+export const checkOwnership = async (db: DatabaseAdapter, table: string, id: number, userId: number) => {
   if (table === 'apis') {
     const api = await db.get<{ user_id: number }>("SELECT user_id FROM apis WHERE id = ?", [id]);
     return api && api.user_id === userId;
@@ -86,7 +87,8 @@ export const adminMiddleware = async (c: Context<AppEnv>, next: Next) => {
   if (!sessionToken) return c.json({ error: "Unauthorized" }, 401);
 
   let userId: number | null = null;
-  const kvInstance = getKV();
+  const db = getDB(c);
+  const kvInstance = getKV(c);
   
   if (kvInstance) {
     try {

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
-import { db, getKV } from "../db/index.js";
+import { getDB, getKV } from "../db/index.js";
 import { LoginSchema, RegisterSchema } from "../schemas/auth.js";
 import { validateApiKey } from "../middlewares/auth.js";
 import { UserRow, PlanRow, AppEnv } from "../types.js";
@@ -9,6 +9,8 @@ import { UserRow, PlanRow, AppEnv } from "../types.js";
 const auth = new Hono<AppEnv>();
 
 auth.post("/login", async (c) => {
+  const db = getDB(c);
+  const kvInstance = getKV(c);
   const body = await c.req.json();
   const validation = LoginSchema.safeParse(body);
   if (!validation.success) return c.json({ error: "Invalid input format" }, 400);
@@ -31,7 +33,6 @@ auth.post("/login", async (c) => {
     
     await db.run("INSERT INTO sessions (token, user_id, last_activity) VALUES (?, ?, ?)", [sessionToken, user.id, sessionData.last_activity]);
     
-    const kvInstance = getKV();
     if (kvInstance) await kvInstance.put(sessionToken, JSON.stringify(sessionData), { expirationTtl: 3600 });
     
     const plan = await db.get<PlanRow>("SELECT * FROM plans WHERE id = ?", [user.plan_id]);
@@ -60,6 +61,7 @@ auth.post("/login", async (c) => {
 });
 
 auth.post("/register", async (c) => {
+  const db = getDB(c);
   const body = await c.req.json();
   const validation = RegisterSchema.safeParse(body);
   if (!validation.success) return c.json({ error: validation.error.issues[0].message }, 400);
@@ -86,18 +88,21 @@ auth.post("/register", async (c) => {
 });
 
 auth.get("/me", validateApiKey, async (c) => {
+  const db = getDB(c);
   const userId = c.get('userId');
   const user = await db.get<UserRow>("SELECT id, username, api_key, is_admin FROM users WHERE id = ?", [userId]);
   return c.json(user);
 });
 
 auth.get("/keys", validateApiKey, async (c) => {
+  const db = getDB(c);
   const userId = c.get('userId');
   const keys = await db.query("SELECT * FROM api_keys WHERE user_id = ?", [userId]);
   return c.json(keys);
 });
 
 auth.post("/keys", validateApiKey, async (c) => {
+  const db = getDB(c);
   const userId = c.get('userId');
   const body = await c.req.json();
   const { name } = body;
@@ -118,6 +123,7 @@ auth.post("/keys", validateApiKey, async (c) => {
 });
 
 auth.delete("/keys/:id", validateApiKey, async (c) => {
+  const db = getDB(c);
   const id = c.req.param('id');
   const userId = c.get('userId');
   await db.run("DELETE FROM api_keys WHERE id = ? AND user_id = ?", [id, userId]);
@@ -125,6 +131,7 @@ auth.delete("/keys/:id", validateApiKey, async (c) => {
 });
 
 auth.put("/profile", validateApiKey, async (c) => {
+  const db = getDB(c);
   const userId = c.get('userId');
   const body = await c.req.json();
   const { fullName, email } = body;

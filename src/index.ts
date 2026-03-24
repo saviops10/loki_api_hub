@@ -21,7 +21,7 @@ app.use("*", dbMiddleware);
 // Health Routes
 app.get("/api/health", (c) => c.json({ status: "ok" }));
 app.get("/api/health/status", async (c) => {
-  const status = getStatus();
+  const status = getStatus(c);
   return c.json({
     status: "ok",
     adapters: status,

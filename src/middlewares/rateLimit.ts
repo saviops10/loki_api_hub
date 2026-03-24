@@ -11,7 +11,7 @@ export const rateLimitMiddleware = async (c: Context<AppEnv>, next: Next) => {
   // In Hono/Cloudflare, c.req.header('cf-connecting-ip') is often used
   const ip = c.req.header('cf-connecting-ip') || 'unknown';
   const now = Date.now();
-  const kv = getKV();
+  const kv = getKV(c);
 
   try {
     if (kv) {
@@ -32,7 +32,7 @@ export const rateLimitMiddleware = async (c: Context<AppEnv>, next: Next) => {
       }
     } else {
       // Fallback to Database if KV is not available (e.g., local dev)
-      const db = getDB();
+      const db = getDB(c);
       await db.exec(`
         CREATE TABLE IF NOT EXISTS rate_limits (
           ip TEXT PRIMARY KEY,

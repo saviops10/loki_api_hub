@@ -1,12 +1,10 @@
-import { db, getKV } from "../db/index.js";
-import { ApiRow, CircuitBreakerState } from "../types.js";
+import { ApiRow, CircuitBreakerState, DatabaseAdapter, KVAdapter } from "../types.js";
 import { encrypt, decrypt } from "../utils/security.js";
 
 const FAILURE_THRESHOLD = 5;
 const COOLDOWN_PERIOD = 60 * 1000; // 1 minute
 
-export async function getCircuitBreaker(apiId: number): Promise<CircuitBreakerState> {
-  const kvInstance = getKV();
+export async function getCircuitBreaker(kvInstance: KVAdapter | null, apiId: number): Promise<CircuitBreakerState> {
   const key = `circuit:${apiId}`;
   
   if (kvInstance) {
@@ -17,8 +15,7 @@ export async function getCircuitBreaker(apiId: number): Promise<CircuitBreakerSt
   return { failures: 0, lastFailure: 0, status: 'CLOSED' };
 }
 
-export async function saveCircuitBreaker(apiId: number, state: CircuitBreakerState) {
-  const kvInstance = getKV();
+export async function saveCircuitBreaker(kvInstance: KVAdapter | null, apiId: number, state: CircuitBreakerState) {
   const key = `circuit:${apiId}`;
   
   if (kvInstance) {
@@ -26,14 +23,14 @@ export async function saveCircuitBreaker(apiId: number, state: CircuitBreakerSta
   }
 }
 
-export async function checkCircuitBreaker(apiId: number): Promise<boolean> {
-  const cb = await getCircuitBreaker(apiId);
+export async function checkCircuitBreaker(kvInstance: KVAdapter | null, apiId: number): Promise<boolean> {
+  const cb = await getCircuitBreaker(kvInstance, apiId);
   if (cb.status === 'CLOSED') return true;
 
   if (cb.status === 'OPEN') {
     if (Date.now() - cb.lastFailure > COOLDOWN_PERIOD) {
       cb.status = 'HALF_OPEN';
-      await saveCircuitBreaker(apiId, cb);
+      await saveCircuitBreaker(kvInstance, apiId, cb);
       return true;
     }
     return false;
@@ -41,15 +38,15 @@ export async function checkCircuitBreaker(apiId: number): Promise<boolean> {
   return true;
 }
 
-export async function recordApiSuccess(apiId: number) {
-  const cb = await getCircuitBreaker(apiId);
+export async function recordApiSuccess(kvInstance: KVAdapter | null, apiId: number) {
+  const cb = await getCircuitBreaker(kvInstance, apiId);
   if (cb.failures > 0 || cb.status !== 'CLOSED') {
-    await saveCircuitBreaker(apiId, { failures: 0, lastFailure: 0, status: 'CLOSED' });
+    await saveCircuitBreaker(kvInstance, apiId, { failures: 0, lastFailure: 0, status: 'CLOSED' });
   }
 }
 
-export async function recordApiFailure(apiId: number) {
-  const cb = await getCircuitBreaker(apiId);
+export async function recordApiFailure(kvInstance: KVAdapter | null, apiId: number) {
+  const cb = await getCircuitBreaker(kvInstance, apiId);
   cb.failures += 1;
   cb.lastFailure = Date.now();
   
@@ -57,10 +54,10 @@ export async function recordApiFailure(apiId: number) {
     cb.status = 'OPEN';
   }
   
-  await saveCircuitBreaker(apiId, cb);
+  await saveCircuitBreaker(kvInstance, apiId, cb);
 }
 
-export async function refreshApiToken(apiId: number): Promise<string | null> {
+export async function refreshApiToken(db: DatabaseAdapter, apiId: number): Promise<string | null> {
   const api = await db.get<ApiRow>("SELECT * FROM apis WHERE id = ?", [apiId]);
   if (!api || !api.auth_endpoint) return null;
 

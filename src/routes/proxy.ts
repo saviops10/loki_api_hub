@@ -1,16 +1,16 @@
 import { Hono } from "hono";
-import { db } from "../db/index.js";
+import { getDB, getKV } from "../db/index.js";
 import { ProxyRequestSchema } from "../schemas/proxy.js";
 import { validateApiKey } from "../middlewares/auth.js";
 import { rateLimitMiddleware } from "../middlewares/rateLimit.js";
-import { ApiRow, EndpointRow, AppEnv } from "../types.js";
+import { ApiRow, EndpointRow, AppEnv, DatabaseAdapter } from "../types.js";
 import { encrypt, decrypt, scrubData } from "../utils/security.js";
 import { validateUrlForSsrf } from "../utils/ssrf.js";
 import { checkCircuitBreaker, recordApiSuccess, recordApiFailure, refreshApiToken } from "../services/apiService.js";
 
 const proxy = new Hono<AppEnv>();
 
-async function backgroundLog(endpointId: number, status: number, responseBody: string, latency: number, userId: number) {
+async function backgroundLog(db: DatabaseAdapter, endpointId: number, status: number, responseBody: string, latency: number, userId: number) {
   try {
     await db.run("INSERT INTO logs (endpoint_id, status, response_body, latency) VALUES (?, ?, ?, ?)", 
       [endpointId, status, responseBody, latency]);
@@ -22,6 +22,8 @@ async function backgroundLog(endpointId: number, status: number, responseBody: s
 
 proxy.post("/", rateLimitMiddleware, validateApiKey, async (c) => {
   const startTime = Date.now();
+  const db = getDB(c);
+  const kvInstance = getKV(c);
   const userId = c.get('userId');
   const body = await c.req.json();
   
@@ -36,11 +38,11 @@ proxy.post("/", rateLimitMiddleware, validateApiKey, async (c) => {
 
     if (!api || !endpoint) return c.json({ error: "API or Endpoint not found" }, 404);
     if (!await validateUrlForSsrf(api.base_url)) return c.json({ error: "Invalid target URL" }, 400);
-    if (!await checkCircuitBreaker(apiId)) return c.json({ error: "Service unavailable" }, 503);
+    if (!await checkCircuitBreaker(kvInstance, apiId)) return c.json({ error: "Service unavailable" }, 503);
 
     let token = api.token ? decrypt(api.token) : null;
     if (api.auth_type !== 'none' && api.auth_endpoint && (!token || (api.token_expires_at && new Date(api.token_expires_at) < new Date()))) {
-      token = await refreshApiToken(apiId);
+      token = await refreshApiToken(db, apiId);
     }
 
     let baseUrl = api.base_url.replace(/\/+$/, '');
@@ -84,15 +86,15 @@ proxy.post("/", rateLimitMiddleware, validateApiKey, async (c) => {
       }
 
       const response = await fetch(url, fetchOptions);
-      if (response.ok) await recordApiSuccess(apiId);
-      else if (response.status >= 500) await recordApiFailure(apiId);
+      if (response.ok) await recordApiSuccess(kvInstance, apiId);
+      else if (response.status >= 500) await recordApiFailure(kvInstance, apiId);
       return response;
     };
 
     let response = await executeRequest(token || undefined);
 
     if (response.status === 401 && api.auth_endpoint) {
-      const newToken = await refreshApiToken(apiId);
+      const newToken = await refreshApiToken(db, apiId);
       if (newToken) response = await executeRequest(newToken);
     }
 
@@ -107,13 +109,13 @@ proxy.post("/", rateLimitMiddleware, validateApiKey, async (c) => {
     }
 
     const logBody = typeof responseData === 'string' ? responseData : JSON.stringify(responseData);
-    backgroundLog(endpointId, response.status, scrubData(logBody), latency, userId).catch(console.error);
+    backgroundLog(db, endpointId, response.status, scrubData(logBody), latency, userId).catch(console.error);
 
     return c.json(responseData, response.status as any);
   } catch (error: any) {
     const latency = Date.now() - startTime;
-    await recordApiFailure(apiId);
-    backgroundLog(endpointId, 500, JSON.stringify({ error: error.message }), latency, userId).catch(console.error);
+    await recordApiFailure(kvInstance, apiId);
+    backgroundLog(db, endpointId, 500, JSON.stringify({ error: error.message }), latency, userId).catch(console.error);
     return c.json({ error: "Proxy request failed", details: error.message }, 500);
   }
 });

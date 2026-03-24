@@ -1,11 +1,12 @@
 import { Hono } from "hono";
-import { db, getStatus, getKV } from "../db/index.js";
+import { getDB, getStatus, getKV } from "../db/index.js";
 import { adminMiddleware } from "../middlewares/auth.js";
 import { UserRow, PlanRow, ApiRow, AppEnv } from "../types.js";
 
 const admin = new Hono<AppEnv>();
 
 admin.get("/users", adminMiddleware, async (c) => {
+  const db = getDB(c);
   const users = await db.query(`
     SELECT u.id, u.username, u.full_name, u.email, u.is_admin, u.request_count, p.name as plan_name 
     FROM users u 
@@ -15,11 +16,13 @@ admin.get("/users", adminMiddleware, async (c) => {
 });
 
 admin.get("/plans", adminMiddleware, async (c) => {
+  const db = getDB(c);
   const plans = await db.query("SELECT * FROM plans");
   return c.json(plans);
 });
 
 admin.post("/plans", adminMiddleware, async (c) => {
+  const db = getDB(c);
   const body = await c.req.json();
   const { name, request_limit, max_apis, max_endpoints, features, price } = body;
   try {
@@ -34,6 +37,7 @@ admin.post("/plans", adminMiddleware, async (c) => {
 });
 
 admin.put("/plans/:id", adminMiddleware, async (c) => {
+  const db = getDB(c);
   const id = c.req.param('id');
   const body = await c.req.json();
   const { name, request_limit, max_apis, max_endpoints, features, price } = body;
@@ -50,6 +54,7 @@ admin.put("/plans/:id", adminMiddleware, async (c) => {
 });
 
 admin.delete("/plans/:id", adminMiddleware, async (c) => {
+  const db = getDB(c);
   const id = c.req.param('id');
   try {
     await db.run("DELETE FROM plans WHERE id = ?", [id]);
@@ -60,6 +65,7 @@ admin.delete("/plans/:id", adminMiddleware, async (c) => {
 });
 
 admin.get("/apis", adminMiddleware, async (c) => {
+  const db = getDB(c);
   const apis = await db.query(`
     SELECT a.*, u.username as owner_name 
     FROM apis a 
@@ -69,6 +75,7 @@ admin.get("/apis", adminMiddleware, async (c) => {
 });
 
 admin.post("/users/:id/toggle-admin", adminMiddleware, async (c) => {
+  const db = getDB(c);
   const id = c.req.param('id');
   const body = await c.req.json();
   const { isAdmin } = body;
@@ -77,7 +84,7 @@ admin.post("/users/:id/toggle-admin", adminMiddleware, async (c) => {
 });
 
 admin.get("/system-status", adminMiddleware, async (c) => {
-  const dbStatus = getStatus();
+  const dbStatus = getStatus(c);
   const status = {
     d1: {
       status: dbStatus.database !== "Not Initialized" ? "Connected" : "Disconnected",
@@ -100,9 +107,10 @@ admin.get("/system-status", adminMiddleware, async (c) => {
 });
 
 admin.post("/circuit/reset", adminMiddleware, async (c) => {
+  const id = c.req.param('id');
   const body = await c.req.json();
   const { apiId } = body;
-  const kvInstance = getKV();
+  const kvInstance = getKV(c);
   
   if (apiId) {
     if (kvInstance) {

@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { db, getR2 } from "../db/index.js";
+import { getDB, getR2 } from "../db/index.js";
 import { ApiSchema } from "../schemas/api.js";
 import { validateApiKey, checkOwnership } from "../middlewares/auth.js";
 import { ApiRow, EndpointRow, AppEnv } from "../types.js";
@@ -9,12 +9,14 @@ import { refreshApiToken } from "../services/apiService.js";
 const apis = new Hono<AppEnv>();
 
 apis.get("/", validateApiKey, async (c) => {
+  const db = getDB(c);
   const userId = c.get('userId');
   const apis = await db.query<ApiRow>("SELECT * FROM apis WHERE user_id = ?", [userId]);
   return c.json(apis);
 });
 
 apis.post("/", validateApiKey, async (c) => {
+  const db = getDB(c);
   const userId = c.get('userId');
   const body = await c.req.json();
   const validation = ApiSchema.safeParse(body);
@@ -28,15 +30,16 @@ apis.post("/", validateApiKey, async (c) => {
     [userId, name, normalizedBaseUrl, authType || 'none', encryptedConfig, authEndpoint, authUsername, authPassword, authPayloadTemplate]);
   
   const apiId = Number(info.lastInsertRowid);
-  if (authEndpoint) refreshApiToken(apiId).catch(console.error);
+  if (authEndpoint) refreshApiToken(db, apiId).catch(console.error);
   
   return c.json({ id: apiId });
 });
 
 apis.delete("/:id", validateApiKey, async (c) => {
+  const db = getDB(c);
   const userId = c.get('userId');
   const id = Number(c.req.param('id'));
-  if (!await checkOwnership('apis', id, userId)) return c.json({ error: "Access denied" }, 403);
+  if (!await checkOwnership(db, 'apis', id, userId)) return c.json({ error: "Access denied" }, 403);
   
   await db.run("DELETE FROM endpoints WHERE api_id = ?", [id]);
   await db.run("DELETE FROM apis WHERE id = ?", [id]);
@@ -44,16 +47,19 @@ apis.delete("/:id", validateApiKey, async (c) => {
 });
 
 apis.post("/:id/refresh-token", validateApiKey, async (c) => {
+  const db = getDB(c);
   const userId = c.get('userId');
   const id = Number(c.req.param('id'));
-  if (!await checkOwnership('apis', id, userId)) return c.json({ error: "Access denied" }, 403);
+  if (!await checkOwnership(db, 'apis', id, userId)) return c.json({ error: "Access denied" }, 403);
   
-  const token = await refreshApiToken(id);
+  const token = await refreshApiToken(db, id);
   if (token) return c.json({ token });
   return c.json({ error: "Failed to refresh token" }, 500);
 });
 
 apis.get("/export/:userId", validateApiKey, async (c) => {
+  const db = getDB(c);
+  const r2Instance = getR2(c);
   const userId = c.get('userId');
   const paramUserId = Number(c.req.param('userId'));
   if (userId !== paramUserId) return c.json({ error: "Access denied" }, 403);
@@ -80,7 +86,6 @@ apis.get("/export/:userId", validateApiKey, async (c) => {
   const fileName = `export_user_${userId}_${Date.now()}.json`;
   const dataStr = JSON.stringify(data, null, 2);
   
-  const r2Instance = getR2();
   if (r2Instance) {
     try {
       await r2Instance.put(fileName, dataStr);
@@ -93,9 +98,10 @@ apis.get("/export/:userId", validateApiKey, async (c) => {
 });
 
 apis.get("/:id/stats", validateApiKey, async (c) => {
+  const db = getDB(c);
   const userId = c.get('userId');
   const id = Number(c.req.param('id'));
-  if (!await checkOwnership('apis', id, userId)) return c.json({ error: "Access denied" }, 403);
+  if (!await checkOwnership(db, 'apis', id, userId)) return c.json({ error: "Access denied" }, 403);
 
   const logs = await db.query(`
     SELECT l.*, e.name as endpoint_name 
