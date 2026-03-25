@@ -89,6 +89,50 @@ class D1Adapter implements DatabaseAdapter {
   }
 }
 
+class LocalSQLiteAdapter implements DatabaseAdapter {
+  private inner: DatabaseAdapter | null = null;
+
+  private async getInner(): Promise<DatabaseAdapter> {
+    if (!this.inner) {
+      this.inner = await SQLiteAdapter.create("local.db");
+    }
+    return this.inner;
+  }
+
+  async query<T = any>(sql: string, params: any[] = []): Promise<T[]> {
+    const db = await this.getInner();
+    return db.query(sql, params);
+  }
+
+  async get<T = any>(sql: string, params: any[] = []): Promise<T | undefined> {
+    const db = await this.getInner();
+    return db.get(sql, params);
+  }
+
+  async run(sql: string, params: any[] = []): Promise<{ lastInsertRowid: number | string; changes: number }> {
+    const db = await this.getInner();
+    return db.run(sql, params);
+  }
+
+  async exec(sql: string): Promise<void> {
+    const db = await this.getInner();
+    return db.exec(sql);
+  }
+
+  pragma(sql: string): void {
+    this.getInner().then(db => db.pragma(sql)).catch(console.error);
+  }
+
+  async batch(statements: { sql: string; params?: any[] }[]): Promise<void> {
+    const db = await this.getInner();
+    return db.batch(statements);
+  }
+
+  getType(): string {
+    return "Local SQLite (Lazy Fallback)";
+  }
+}
+
 /**
  * Returns the database adapter instance from the context.
  */
@@ -97,8 +141,7 @@ export const getDB = (c: Context<AppEnv>): DatabaseAdapter => {
     return new D1Adapter(c.env.DB);
   }
   // Fallback for local development if DB is not provided in env
-  // In a real Cloudflare environment, DB should always be present if configured.
-  throw new Error("D1 Database binding (DB) not found in environment.");
+  return new LocalSQLiteAdapter();
 };
 
 /**
@@ -125,11 +168,11 @@ export const dbMiddleware = async (c: Context<AppEnv>, next: () => Promise<void>
 };
 
 export const getStatus = (c: Context<AppEnv>) => {
-  const db = c.env.DB ? "Cloudflare D1" : "Not Initialized";
+  const db = c.env.DB ? "Cloudflare D1" : "Local SQLite (Fallback)";
   return {
     database: db,
-    kv: c.env.SESSION ? "Active (Cloudflare SESSION)" : "Inactive",
-    r2: c.env.PAYLOADS ? "Active (Cloudflare PAYLOADS)" : "Inactive",
+    kv: c.env.SESSION ? "Active (Cloudflare SESSION)" : "Inactive (Local Mock)",
+    r2: c.env.PAYLOADS ? "Active (Cloudflare PAYLOADS)" : "Inactive (Local Mock)",
     isCloudflare: !!c.env.DB
   };
 };
@@ -176,14 +219,9 @@ export async function initDatabase(database: DatabaseAdapter) {
 
   // Seed default plans if they don't exist
   try {
-    const planCountResult = await database.get<{ count: number }>("SELECT COUNT(*) as count FROM plans");
-    const planCount = planCountResult?.count || 0;
-    
-    if (planCount === 0) {
-      await database.run("INSERT INTO plans (name, request_limit, max_apis, max_endpoints, features, price) VALUES (?, ?, ?, ?, ?, ?)", ['Free', 1000, 5, 20, JSON.stringify(['Até 5 integrações ativas.', 'Painel básico.', 'Ambiente sandbox.', 'Logs limitados.']), 'R$ 0']);
-      await database.run("INSERT INTO plans (name, request_limit, max_apis, max_endpoints, features, price) VALUES (?, ?, ?, ?, ?, ?)", ['Business', 100000, 100, 1000, JSON.stringify(['Integrações ilimitadas.', 'Automação avançada.', 'Logs ampliados.', 'Suporte prioritário.']), 'Sob consulta']);
-      await database.run("INSERT INTO plans (name, request_limit, max_apis, max_endpoints, features, price) VALUES (?, ?, ?, ?, ?, ?)", ['Custom', 1000000, 1000, 10000, JSON.stringify(['Arquitetura personalizada.', 'SLAs dedicados.', 'Governança multi-times.', 'Consultoria.']), 'Sob medida']);
-    }
+    await database.run("INSERT OR IGNORE INTO plans (name, request_limit, max_apis, max_endpoints, features, price) VALUES (?, ?, ?, ?, ?, ?)", ['Free', 1000, 5, 20, JSON.stringify(['Até 5 integrações ativas.', 'Painel básico.', 'Ambiente sandbox.', 'Logs limitados.']), 'R$ 0']);
+    await database.run("INSERT OR IGNORE INTO plans (name, request_limit, max_apis, max_endpoints, features, price) VALUES (?, ?, ?, ?, ?, ?)", ['Business', 100000, 100, 1000, JSON.stringify(['Integrações ilimitadas.', 'Automação avançada.', 'Logs ampliados.', 'Suporte prioritário.']), 'Sob consulta']);
+    await database.run("INSERT OR IGNORE INTO plans (name, request_limit, max_apis, max_endpoints, features, price) VALUES (?, ?, ?, ?, ?, ?)", ['Custom', 1000000, 1000, 10000, JSON.stringify(['Arquitetura personalizada.', 'SLAs dedicados.', 'Governança multi-times.', 'Consultoria.']), 'Sob medida']);
 
     // Assign 'Free' plan to existing users who don't have one
     await database.exec("UPDATE users SET plan_id = (SELECT id FROM plans WHERE name = 'Free') WHERE plan_id IS NULL");
@@ -253,11 +291,27 @@ export async function initDatabase(database: DatabaseAdapter) {
     if (!adminUser) {
       const hashedPassword = await hashPassword("root123!");
       const apiKey = `loki_${crypto.randomUUID().replace(/-/g, '')}`;
-      await database.run("INSERT INTO users (username, full_name, email, password, api_key, is_admin) VALUES (?, ?, ?, ?, ?, ?)", ["admin", "System Administrator", "admin@loki.hub", hashedPassword, apiKey, 1]);
+      const freePlan = await database.get<{ id: number }>("SELECT id FROM plans WHERE name = 'Free'");
+      const planId = freePlan?.id || 1;
+      await database.run("INSERT INTO users (username, full_name, email, password, api_key, is_admin, plan_id) VALUES (?, ?, ?, ?, ?, ?, ?)", ["admin", "System Administrator", "admin@loki.hub", hashedPassword, apiKey, 1, planId]);
       console.log("[DB] Admin user seeded successfully.");
+    } else {
+      // Ensure admin user has is_admin = 1 and update password if it's in old format
+      let needsUpdate = adminUser.is_admin !== 1;
+      let newPassword = adminUser.password;
+      
+      if (!adminUser.password.includes(':')) {
+        newPassword = await hashPassword("root123!");
+        needsUpdate = true;
+      }
+      
+      if (needsUpdate) {
+        await database.run("UPDATE users SET password = ?, is_admin = 1 WHERE username = ?", [newPassword, "admin"]);
+        console.log("[DB] Admin user record updated (is_admin or password format).");
+      }
     }
   } catch (error) {
-    console.error("[DB] Failed to seed admin user:", error);
+    console.error("[DB] Failed to seed or update admin user:", error);
   }
 
   isInitialized = true;

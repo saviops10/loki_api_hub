@@ -26,9 +26,12 @@ export const RegisterForm: React.FC<{ onToggle: () => void }> = ({ onToggle }) =
       return;
     }
     
-    // Convert checkbox values to boolean
+    // Convert checkbox values to boolean and clean up payload
     const payload = {
-      ...data,
+      username: data.username,
+      fullName: data.fullName,
+      email: data.email,
+      password: data.password,
       termsAccepted: formData.get('termsAccepted') === 'on',
       privacyAccepted: formData.get('privacyAccepted') === 'on',
     };

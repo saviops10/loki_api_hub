@@ -83,8 +83,13 @@ auth.post("/register", async (c) => {
     return c.json({ id: info.lastInsertRowid, username, apiKey, is_admin: isAdmin });
   } catch (e: any) {
     console.error("[AUTH] Registration error:", e);
-    if (e.message && e.message.includes('UNIQUE')) return c.json({ error: "User or Email already exists" }, 400);
-    return c.json({ error: `Registration failed: ${e.message || 'Unknown error'}` }, 500);
+    const errorMsg = e.message || String(e);
+    if (errorMsg.includes('UNIQUE') || errorMsg.includes('already exists')) {
+      if (errorMsg.includes('username')) return c.json({ error: "Username already taken" }, 400);
+      if (errorMsg.includes('email')) return c.json({ error: "Email already registered" }, 400);
+      return c.json({ error: "User or Email already exists" }, 400);
+    }
+    return c.json({ error: `Registration failed: ${errorMsg}` }, 500);
   }
 });
 

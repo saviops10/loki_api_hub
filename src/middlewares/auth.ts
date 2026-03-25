@@ -104,12 +104,19 @@ export const adminMiddleware = async (c: Context<AppEnv>, next: Next) => {
 
   if (!userId) {
     const session = await db.get<SessionRow>("SELECT user_id FROM sessions WHERE token = ?", [sessionToken]);
-    if (!session) return c.json({ error: "Invalid session" }, 401);
+    if (!session) {
+      console.warn(`[ADMIN] Invalid session token: ${sessionToken.substring(0, 8)}...`);
+      return c.json({ error: "Invalid session" }, 401);
+    }
     userId = session.user_id;
   }
 
-  const user = await db.get<UserRow>("SELECT is_admin FROM users WHERE id = ?", [userId]);
-  if (!user || user.is_admin !== 1) return c.json({ error: "Forbidden: Admin access required" }, 403);
+  const user = await db.get<UserRow>("SELECT id, username, is_admin FROM users WHERE id = ?", [userId]);
+  
+  if (!user || user.is_admin !== 1) {
+    console.warn(`[ADMIN] Access denied for user ${user?.username || 'unknown'} (ID: ${userId}). is_admin: ${user?.is_admin}`);
+    return c.json({ error: "Forbidden: Admin access required" }, 403);
+  }
 
   c.set('userId', userId);
   await next();
