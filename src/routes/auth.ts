@@ -1,10 +1,10 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import bcrypt from "bcryptjs";
 import { getDB, getKV } from "../db/index.js";
 import { LoginSchema, RegisterSchema } from "../schemas/auth.js";
 import { validateApiKey } from "../middlewares/auth.js";
 import { UserRow, PlanRow, AppEnv } from "../types.js";
+import { hashPassword, verifyPassword } from "../utils/password.js";
 
 const auth = new Hono<AppEnv>();
 
@@ -24,7 +24,7 @@ auth.post("/login", async (c) => {
     return c.json({ error: "Account temporarily locked. Try again later." }, 423);
   }
 
-  const isValid = await bcrypt.compare(password, user.password);
+  const isValid = await verifyPassword(password, user.password);
   
   if (isValid) {
     await db.run("UPDATE users SET failed_attempts = 0, lock_until = NULL WHERE id = ?", [user.id]);
@@ -67,7 +67,7 @@ auth.post("/register", async (c) => {
   if (!validation.success) return c.json({ error: validation.error.issues[0].message }, 400);
   
   const { username, fullName, email, password } = validation.data;
-  const hashedPassword = await bcrypt.hash(password, 10);
+  const hashedPassword = await hashPassword(password);
   const apiKey = `loki_${crypto.randomUUID().replace(/-/g, '')}`;
   
   const userCountResult = await db.get<{ count: number }>("SELECT COUNT(*) as count FROM users");
@@ -82,8 +82,9 @@ auth.post("/register", async (c) => {
     ]);
     return c.json({ id: info.lastInsertRowid, username, apiKey, is_admin: isAdmin });
   } catch (e: any) {
-    if (e.message.includes('UNIQUE')) return c.json({ error: "User or Email already exists" }, 400);
-    return c.json({ error: "Registration failed" }, 500);
+    console.error("[AUTH] Registration error:", e);
+    if (e.message && e.message.includes('UNIQUE')) return c.json({ error: "User or Email already exists" }, 400);
+    return c.json({ error: `Registration failed: ${e.message || 'Unknown error'}` }, 500);
   }
 });
 

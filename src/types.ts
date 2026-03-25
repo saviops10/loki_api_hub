@@ -1,5 +1,27 @@
 /// <reference types="@cloudflare/workers-types" />
 
+export interface DatabaseAdapter {
+  query<T = any>(sql: string, params?: any[]): Promise<T[]>;
+  get<T = any>(sql: string, params?: any[]): Promise<T | undefined>;
+  run(sql: string, params?: any[]): Promise<{ lastInsertRowid: number | string; changes: number }>;
+  exec(sql: string): Promise<void>;
+  pragma(sql: string): void;
+  batch(statements: { sql: string; params?: any[] }[]): Promise<void>;
+  getType(): string;
+}
+
+export interface KVAdapter {
+  get(key: string): Promise<string | null>;
+  put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
+  delete(key: string): Promise<void>;
+}
+
+export interface R2Adapter {
+  get(key: string): Promise<ReadableStream | null>;
+  put(key: string, value: any): Promise<void>;
+  delete(key: string): Promise<void>;
+}
+
 export interface UserRow {
   id: number;
   username: string;
