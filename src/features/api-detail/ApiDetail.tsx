@@ -10,11 +10,15 @@ import { LoadingSpinner, EmptyState } from '../../components/Feedback';
 import { ConfirmModal } from '../../components/Modal';
 import { ProfileMenu } from '../../components/ProfileMenu';
 import { generateCurl, generateSnippet, formatDate } from '../../utils/helpers';
+import Papa from 'papaparse';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   BarChart, Bar, Cell, PieChart, Pie
 } from 'recharts';
-import { Code, BarChart3, Activity, Terminal, Shield, Zap, GitFork, Edit2, RefreshCw } from 'lucide-react';
+import { 
+  Code, BarChart3, Activity, Terminal, Shield, Zap, GitFork, Edit2, RefreshCw,
+  Upload, Play, CheckCircle2, XCircle, AlertCircle, FileText, Layers
+} from 'lucide-react';
 
 export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ api: initialApi, onBack }) => {
   const { showToast } = useApp();
@@ -22,8 +26,16 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
   const [endpoints, setEndpoints] = useLocalStorage<Endpoint[]>('smart_api_hub_endpoints', []);
   const [testResults, setTestResults] = useState<Record<number, any>>({});
   const [selectedEndpoint, setSelectedEndpoint] = useState<any>(null);
-  const [activeEndpointTab, setActiveEndpointTab] = useState<'params' | 'payload' | 'code' | 'logs' | 'stats'>('params');
+  const [activeEndpointTab, setActiveEndpointTab] = useState<'params' | 'payload' | 'code' | 'logs' | 'stats' | 'bulk'>('params');
   const [selectedLanguage, setSelectedLanguage] = useState<'curl' | 'js' | 'python' | 'go'>('curl');
+  
+  // Bulk Request State
+  const [csvData, setCsvData] = useState<any[]>([]);
+  const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
+  const [paramMapping, setParamMapping] = useState<Record<string, string>>({});
+  const [bulkResults, setBulkResults] = useState<{ status: number, data: any, timestamp: Date, success: boolean }[]>([]);
+  const [isBulkRunning, setIsBulkRunning] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState(0);
   const [endpointLogs, setEndpointLogs] = useState<Record<number, Log[]>>({});
   const [endpointParams, setEndpointParams] = useLocalStorage<Record<number, { key: string, value: string }[]>>('smart_api_hub_endpoint_params', {});
   const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -187,6 +199,91 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
       setActiveEndpointTab('payload');
       fetchLogs(ep.id);
     }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        setCsvData(results.data);
+        if (results.meta.fields) {
+          setCsvHeaders(results.meta.fields);
+          // Auto-mapping
+          const mapping: Record<string, string> = {};
+          const params = endpointParams[selectedEndpoint.id] || [];
+          params.forEach(p => {
+            if (results.meta.fields?.includes(p.key)) {
+              mapping[p.key] = p.key;
+            }
+          });
+          setParamMapping(mapping);
+        }
+        showToast(`CSV loaded: ${results.data.length} rows found`, 'success');
+      },
+      error: (error) => {
+        showToast(`Error parsing CSV: ${error.message}`, 'error');
+      }
+    });
+  };
+
+  const handleBulkRun = async () => {
+    if (!selectedEndpoint || csvData.length === 0) return;
+    
+    setIsBulkRunning(true);
+    setBulkResults([]);
+    setBulkProgress(0);
+    
+    const results: any[] = [];
+    const total = csvData.length;
+    
+    for (let i = 0; i < total; i++) {
+      const row = csvData[i];
+      const mappedBody: Record<string, any> = {};
+      
+      // Map CSV columns to parameters
+      Object.entries(paramMapping).forEach(([paramKey, csvHeader]) => {
+        if (csvHeader) {
+          mappedBody[paramKey] = row[csvHeader];
+        }
+      });
+
+      try {
+        const result = await call('/api/proxy', {
+          method: 'POST',
+          body: JSON.stringify({ 
+            apiId: api.id, 
+            endpointId: selectedEndpoint.id,
+            body: mappedBody
+          }),
+        });
+
+        const success = result && result.status >= 200 && result.status < 300;
+        results.push({ 
+          status: result?.status || 500, 
+          data: result, 
+          timestamp: new Date(),
+          success: !!success
+        });
+      } catch (err) {
+        results.push({ 
+          status: 500, 
+          data: { error: 'Request failed' }, 
+          timestamp: new Date(),
+          success: false
+        });
+      }
+      
+      setBulkProgress(Math.round(((i + 1) / total) * 100));
+      setBulkResults([...results]);
+    }
+    
+    setIsBulkRunning(false);
+    showToast('Bulk execution completed!', 'success');
+    fetchLogs(selectedEndpoint.id);
   };
 
   return (
@@ -518,7 +615,7 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
                 </div>
 
                 <div className="flex gap-8 mt-8 border-b border-zinc-800/50">
-                  {['params', 'payload', 'code', 'logs', 'stats'].map((tab) => (
+                  {['params', 'payload', 'code', 'logs', 'stats', 'bulk'].map((tab) => (
                     <button 
                       key={tab}
                       onClick={() => {
@@ -536,6 +633,145 @@ export const ApiDetail: React.FC<{ api: ApiConfig, onBack: () => void }> = ({ ap
 
               {/* Modal Content */}
               <div className="flex-1 overflow-y-auto p-8 space-y-8">
+                {activeEndpointTab === 'bulk' && (
+                  <div className="space-y-8 animate-in fade-in duration-300">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      <div className="space-y-6">
+                        <div className="space-y-2">
+                          <h3 className="text-sm font-black text-white uppercase tracking-widest">1. Upload CSV</h3>
+                          <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest">Upload a file with your request data</p>
+                        </div>
+                        
+                        <div className="relative group">
+                          <input 
+                            type="file" 
+                            accept=".csv" 
+                            onChange={handleFileUpload}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                            disabled={isBulkRunning}
+                          />
+                          <div className="p-8 border-2 border-dashed border-zinc-800 group-hover:border-loki-primary/30 rounded-[2rem] bg-zinc-900/20 flex flex-col items-center justify-center gap-4 transition-all">
+                            <div className="w-12 h-12 bg-zinc-900 rounded-2xl flex items-center justify-center border border-zinc-800">
+                              <Upload className="w-6 h-6 text-zinc-500 group-hover:text-loki-primary transition-colors" />
+                            </div>
+                            <div className="text-center">
+                              <p className="text-xs font-black text-white uppercase tracking-widest">
+                                {csvData.length > 0 ? `File Loaded: ${csvData.length} rows` : 'Drop CSV file here'}
+                              </p>
+                              <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest mt-1">or click to browse</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {csvHeaders.length > 0 && (
+                          <div className="space-y-6 animate-in slide-in-from-top-4 duration-300">
+                            <div className="space-y-2">
+                              <h3 className="text-sm font-black text-white uppercase tracking-widest">2. Map Parameters</h3>
+                              <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest">Map endpoint fields to CSV columns</p>
+                            </div>
+                            
+                            <div className="space-y-3 bg-black/40 p-6 rounded-[2rem] border border-zinc-800/50">
+                              {(endpointParams[selectedEndpoint.id] || []).map((param) => (
+                                <div key={param.key} className="flex items-center gap-4">
+                                  <div className="w-1/3">
+                                    <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">{param.key}</span>
+                                  </div>
+                                  <div className="flex-1">
+                                    <select 
+                                      value={paramMapping[param.key] || ''}
+                                      onChange={(e) => setParamMapping(prev => ({ ...prev, [param.key]: e.target.value }))}
+                                      className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2 text-xs text-white outline-none focus:border-loki-primary/30"
+                                    >
+                                      <option value="">-- Ignore --</option>
+                                      {csvHeaders.map(h => (
+                                        <option key={h} value={h}>{h}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                </div>
+                              ))}
+                              {(endpointParams[selectedEndpoint.id] || []).length === 0 && (
+                                <div className="flex items-center gap-3 p-4 bg-zinc-900/50 rounded-2xl border border-zinc-800">
+                                  <AlertCircle className="w-4 h-4 text-zinc-500" />
+                                  <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">No parameters defined for this endpoint</p>
+                                </div>
+                              )}
+                            </div>
+
+                            <Button 
+                              onClick={handleBulkRun}
+                              disabled={isBulkRunning || csvData.length === 0}
+                              className="w-full h-14 bg-loki-primary hover:bg-loki-accent text-zinc-950 shadow-loki-primary/20"
+                            >
+                              {isBulkRunning ? (
+                                <div className="flex items-center gap-3">
+                                  <RefreshCw className="w-4 h-4 animate-spin" />
+                                  <span>EXECUTING {bulkProgress}%</span>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-3">
+                                  <Play className="w-4 h-4" />
+                                  <span>RUN MASSIVE REQUESTS</span>
+                                </div>
+                              )}
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-6">
+                        <div className="space-y-2">
+                          <h3 className="text-sm font-black text-white uppercase tracking-widest">Execution Results</h3>
+                          <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest">Real-time progress and status</p>
+                        </div>
+
+                        <div className="bg-black/40 rounded-[2rem] border border-zinc-800/50 flex flex-col h-[400px]">
+                          {bulkResults.length > 0 ? (
+                            <div className="flex-1 overflow-y-auto p-6 space-y-3">
+                              {bulkResults.map((res, i) => (
+                                <div key={i} className="flex items-center justify-between p-3 bg-zinc-900/50 rounded-xl border border-zinc-800/50 animate-in slide-in-from-bottom-2 duration-200">
+                                  <div className="flex items-center gap-3">
+                                    {res.success ? (
+                                      <CheckCircle2 className="w-4 h-4 text-loki-primary" />
+                                    ) : (
+                                      <XCircle className="w-4 h-4 text-red-500" />
+                                    )}
+                                    <span className="text-[10px] font-black text-white uppercase tracking-widest">Request #{i + 1}</span>
+                                  </div>
+                                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${res.success ? 'bg-loki-primary/10 text-loki-primary' : 'bg-red-500/10 text-red-400'}`}>
+                                    {res.status}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center gap-4">
+                              <div className="w-16 h-16 bg-zinc-900 rounded-3xl flex items-center justify-center border border-zinc-800">
+                                <Layers className="w-8 h-8 text-zinc-800" />
+                              </div>
+                              <p className="text-[10px] text-zinc-600 font-black uppercase tracking-[0.2em]">Waiting for execution...</p>
+                            </div>
+                          )}
+                          
+                          {isBulkRunning && (
+                            <div className="p-6 border-t border-zinc-800/50 bg-zinc-900/20">
+                              <div className="flex justify-between items-center mb-2">
+                                <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Overall Progress</span>
+                                <span className="text-[10px] font-black text-loki-primary">{bulkProgress}%</span>
+                              </div>
+                              <div className="h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden">
+                                <div 
+                                  className="h-full bg-loki-primary transition-all duration-300" 
+                                  style={{ width: `${bulkProgress}%` }} 
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {activeEndpointTab === 'params' && (
                   <div className="space-y-6">
                     <div className="flex justify-between items-center">
